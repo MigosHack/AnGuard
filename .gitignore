@@ -25,3 +25,4 @@ __pycache__/
 backend/.local/
 backend/models/
 backend/recordings/
+backend/.venv/
