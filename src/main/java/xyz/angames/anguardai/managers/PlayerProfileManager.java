@@ -40,6 +40,7 @@ public class PlayerProfileManager {
     }
 
     public void removeProfile(Player player) {
+        this.anguardai.getTrainingRecorder().stop(player.getUniqueId());
         this.profiles.remove(player.getUniqueId());
         this.playerChecks.remove(player.getUniqueId());
     }

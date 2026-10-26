@@ -25,7 +25,8 @@ public class AIServer {
 
         String ip = plugin.getConfig().getString("vds.ip");
         int port = plugin.getConfig().getInt("vds.port");
-        this.secretKey = plugin.getConfig().getString("vds.secret_key");
+        String environmentKey = System.getenv("ANGUARD_API_KEY");
+        this.secretKey = environmentKey != null ? environmentKey : plugin.getConfig().getString("vds.secret_key", "");
         this.apiUrl = "http://" + ip + ":" + port + "/predict_binary";
 
         int mcPort = plugin.getServer().getPort();
@@ -37,6 +38,7 @@ public class AIServer {
     public CompletableFuture<String> sendRequest(byte[] flatBufferData) {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(apiUrl))
+                .timeout(Duration.ofSeconds(5))
                 .header("Content-Type", "application/octet-stream")
                 .header("X-Secret-Key", secretKey)
                 .header("X-Server-Port", serverPort)

@@ -1,0 +1,18 @@
+namespace xyz.angames.anguardai.flatbuffers;
+
+table TickData {
+  delta_yaw:float;
+  delta_pitch:float;
+  accel_yaw:float;
+  accel_pitch:float;
+  jerk_pitch:float;
+  jerk_yaw:float;
+  gcd_error_yaw:float;
+  gcd_error_pitch:float;
+}
+
+table TickDataSequence {
+  ticks:[TickData];
+}
+
+root_type TickDataSequence;

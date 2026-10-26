@@ -6,6 +6,8 @@ import java.util.LinkedList;
 public class PlayerProfile {
 
     public final AimProcessor aimProcessor;
+    public final java.util.concurrent.atomic.AtomicBoolean predictionPending = new java.util.concurrent.atomic.AtomicBoolean();
+    public final java.util.concurrent.atomic.AtomicLong recordingGeneration = new java.util.concurrent.atomic.AtomicLong();
     public float lastYaw, lastPitch;
     public float lastDeltaYaw, lastDeltaPitch;
     public float lastAccelYaw, lastAccelPitch;
@@ -17,6 +19,7 @@ public class PlayerProfile {
     public int ticksSinceLastViolation = 0;
     public double buffer = 0.0;
     public double damageMultiplier = 1.0;
+    public long lastPredictionTime = 0;
     public double suspicion = 0.0;
     public int violationLevel = 0;
     public int ticksStep = 0;
