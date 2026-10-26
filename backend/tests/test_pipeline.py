@@ -1,3 +1,4 @@
+import csv
 import http.client
 import json
 import os
@@ -12,6 +13,7 @@ import numpy as np
 from core import COLUMNS, MODEL_INPUTS, Model, decode_flatbuffer, expand_frames, features, validate_frames
 from server import InferenceServer
 from train import calibrate, load, metrics, train
+from recordings import CSV_COLUMNS, records
 
 
 def encode(frames, schema=1):
@@ -240,6 +242,52 @@ class PipelineTests(unittest.TestCase):
             server.server_close()
             worker.join()
 
+    def write_csv(self, path):
+        with path.open('w', newline='') as stream:
+            writer = csv.writer(stream)
+            writer.writerow(CSV_COLUMNS)
+            for window, raw in enumerate(self.data.read_text().splitlines()):
+                r = json.loads(raw)
+                for index, frame in enumerate(expand_frames(r['frames'])):
+                    writer.writerow([r['label'], *frame, r['player_id'], r['session_id'],
+                                     str(window), index, 1000, 2])
+
+    def test_csv_training_matches_jsonl_and_refuses_duplicate_formats(self):
+        path = self.root / 'recordings.csv'
+        self.write_csv(path)
+        json_x, json_y, json_players, _ = load([self.data])
+        csv_x, csv_y, csv_players, _ = load([path])
+        np.testing.assert_array_equal(csv_x, json_x)
+        np.testing.assert_array_equal(csv_y, json_y)
+        np.testing.assert_array_equal(csv_players, json_players)
+        report = train([path], self.root / 'csv-model.json')
+        self.assertEqual(report['test'], self.report['test'])
+        with self.assertRaisesRegex(ValueError, 'Duplicate'):
+            load([self.data, path])
+
+    def test_csv_rejects_missing_metadata_partial_windows_and_mixed_labels(self):
+        path = self.root / 'bad.csv'
+        path.write_text('label,delta_yaw\n0,1.2\n')
+        with self.assertRaisesRegex(ValueError, 'header'):
+            list(records(path))
+        frames = expand_frames(np.zeros((40, 8)))
+        def write(count=40, change=None):
+            with path.open('w', newline='') as stream:
+                writer = csv.writer(stream)
+                writer.writerow(CSV_COLUMNS)
+                for i in range(count):
+                    row = [0, *frames[i], 'player', 'session', 'window', i, 1000, 2]
+                    if change and i == 1:
+                        row[change[0]] = change[1]
+                    writer.writerow(row)
+        write(count=39)
+        with self.assertRaisesRegex(ValueError, 'Incomplete'):
+            list(records(path))
+        for change in ((0, 1), (52, 0), (49, 'other-player'), (50, 'other-session'), (54, 1)):
+            write(change=change)
+            with self.assertRaises(ValueError):
+                list(records(path))
+
     @unittest.skipUnless(os.environ.get('ANGUARD_JAVA_FIXTURE'), 'Java fixture not requested')
     def test_existing_java_serializer_compatibility(self):
         data = Path(os.environ['ANGUARD_JAVA_FIXTURE']).read_bytes()
@@ -249,6 +297,11 @@ class PipelineTests(unittest.TestCase):
         java_features = json.loads(Path(os.environ['ANGUARD_JAVA_FIXTURE'] + '.features.json').read_text())
         np.testing.assert_allclose(java_features, expand_frames(np.asarray(java_features)[:, :8]), rtol=1e-6, atol=1e-6)
         np.testing.assert_allclose(decode_flatbuffer(v2), java_features, rtol=1e-6, atol=1e-6)
+        csv_window = list(records(Path(os.environ['ANGUARD_JAVA_FIXTURE'] + '.csv')))
+        self.assertEqual(len(csv_window), 1)
+        self.assertEqual(csv_window[0][1]['label'], 1)
+        self.assertEqual(csv_window[0][1]['player_id'], '00000000-0000-0000-0000-000000000001')
+        np.testing.assert_allclose(validate_frames(csv_window[0][1]['frames'], schema=2), java_features, rtol=1e-6, atol=1e-6)
 
 
 if __name__ == '__main__':

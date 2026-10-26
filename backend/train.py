@@ -11,6 +11,7 @@ from sklearn.model_selection import GroupShuffleSplit
 from sklearn.preprocessing import StandardScaler
 
 from core import SCHEMA, COLUMNS, AGGREGATES, features, validate_frames
+from recordings import records
 
 
 def load(paths):
@@ -18,34 +19,30 @@ def load(paths):
     digest = hashlib.sha256()
     seen = set()
     for path in paths:
-        with Path(path).open('rb') as source:
-            for number, raw in enumerate(source, 1):
-                try:
-                    if len(raw) > 131072:
-                        raise ValueError('Oversized record')
-                    r = json.loads(raw)
-                    if r['schema'] not in (1, SCHEMA) or type(r['label']) is not int or r['label'] not in (0, 1):
-                        raise ValueError('Invalid schema or label')
-                    player, session = r['player_id'], r['session_id']
-                    if not isinstance(player, str) or not player or not isinstance(session, str) or not session:
-                        raise ValueError('Missing player/session')
-                    identity = (player, r['label'])
-                    if session in sessions and sessions[session] != identity:
-                        raise ValueError('Session has inconsistent player or label')
-                    sessions[session] = identity
-                    expanded = validate_frames(r['frames'], r['schema'])
-                    values = features(expanded)
-                    # Duplicated files/windows must not inflate metrics or training weights.
-                    fingerprint = hashlib.sha256(player.encode() + expanded[:, :8].astype('<f4').tobytes()).digest()
-                    if fingerprint in seen:
-                        raise ValueError('Duplicate player window; remove duplicated inputs')
-                    seen.add(fingerprint)
-                    rows.append(values)
-                    labels.append(r['label'])
-                    players.append(player)
-                    digest.update(raw)
-                except (ValueError, KeyError, TypeError) as error:
-                    raise ValueError(f'{path}:{number}: {error}') from error
+        for number, r, raw in records(path):
+            try:
+                if r['schema'] not in (1, SCHEMA) or type(r['label']) is not int or r['label'] not in (0, 1):
+                    raise ValueError('Invalid schema or label')
+                player, session = r['player_id'], r['session_id']
+                if not isinstance(player, str) or not player or not isinstance(session, str) or not session:
+                    raise ValueError('Missing player/session')
+                identity = (player, r['label'])
+                if session in sessions and sessions[session] != identity:
+                    raise ValueError('Session has inconsistent player or label')
+                sessions[session] = identity
+                expanded = validate_frames(r['frames'], r['schema'])
+                values = features(expanded)
+                # Duplicated files/windows must not inflate metrics or training weights.
+                fingerprint = hashlib.sha256(player.encode() + expanded[:, :8].astype('<f4').tobytes()).digest()
+                if fingerprint in seen:
+                    raise ValueError('Duplicate player window; remove duplicated inputs')
+                seen.add(fingerprint)
+                rows.append(values)
+                labels.append(r['label'])
+                players.append(player)
+                digest.update(raw)
+            except (ValueError, KeyError, TypeError) as error:
+                raise ValueError(f'{path}:{number}: {error}') from error
     if len(set(players)) < 15:
         raise ValueError('Need at least 15 independent players, with legit and cheat sessions across splits')
     return np.asarray(rows), np.asarray(labels), np.asarray(players), digest.hexdigest()
@@ -125,7 +122,7 @@ def train(paths, output, seed=42, target_fpr=.001):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('data', nargs='+', help='Recorded JSONL files')
+    parser.add_argument('data', nargs='+', help='Recorded JSONL or label-first CSV files (use one format per recording)')
     parser.add_argument('--output', required=True, help='New versioned JSON model file')
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--target-fpr', type=float, default=.001)

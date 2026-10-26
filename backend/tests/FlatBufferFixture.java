@@ -2,6 +2,9 @@ import com.google.flatbuffers.FlatBufferBuilder;
 import xyz.angames.anguardai.flatbuffers.TickData;
 import xyz.angames.anguardai.flatbuffers.TickDataSequence;
 import xyz.angames.anguardai.data.MovementFeatures;
+import xyz.angames.anguardai.data.TrainingCsv;
+import java.util.UUID;
+import java.util.Locale;
 import java.util.Arrays;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -48,5 +51,14 @@ public class FlatBufferFixture {
         TickDataSequence.addSchemaVersion(builder, MovementFeatures.SCHEMA);
         builder.finish(TickDataSequence.endTickDataSequence(builder));
         Files.write(Path.of(args[0] + ".v2"), builder.sizedByteArray());
+        Locale.setDefault(Locale.GERMANY);
+        StringBuilder csv = new StringBuilder(TrainingCsv.header()).append('\n');
+        UUID player = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID session = UUID.fromString("00000000-0000-0000-0000-000000000002");
+        UUID window = UUID.fromString("00000000-0000-0000-0000-000000000003");
+        for (int i = 0; i < 40; i++) {
+            csv.append(TrainingCsv.row(1, expanded[i], player, session, window, i, 1000)).append('\n');
+        }
+        Files.writeString(Path.of(args[0] + ".csv"), csv);
     }
 }
