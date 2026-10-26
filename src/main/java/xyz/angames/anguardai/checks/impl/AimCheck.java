@@ -7,7 +7,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
-import xyz.angames.anguardai.Anguardai;
+import xyz.angames.anguardai.SilentAC;
 import xyz.angames.anguardai.checks.Check;
 import xyz.angames.anguardai.data.PlayerProfile;
 import xyz.angames.anguardai.data.TickDataPOJO;
@@ -26,7 +26,7 @@ public class AimCheck extends Check {
     private static final ThreadLocal<FlatBufferBuilder> BUILDER = ThreadLocal.withInitial(() -> new FlatBufferBuilder(4096));
     private static final Gson GSON = new Gson();
 
-    public AimCheck(Player player, PlayerProfile profile, Anguardai anguardai) {
+    public AimCheck(Player player, PlayerProfile profile, SilentAC anguardai) {
         super(player, profile, anguardai);
         this.sequence = PlayerProfile.HISTORY_SIZE;
         this.step = Math.max(1, plugin.getConfig().getInt("ai.step", 10));
@@ -108,6 +108,7 @@ public class AimCheck extends Check {
         long generation = profile.recordingGeneration.get();
         // Bukkit APIs and labels are read on the server thread. Recording is independent of inference.
         Bukkit.getScheduler().runTask(plugin, () -> {
+            if (plugin.getRecordingManager().checkExpiry(player.getUniqueId())) return;
             if (!player.isOnline() || plugin.getPlayerProfileManager().getProfile(player) != profile
                     || profile.recordingGeneration.get() != generation) return;
             if (player.getPing() > 200 || Bukkit.getTPS()[0] < 18.0
@@ -117,7 +118,7 @@ public class AimCheck extends Check {
                 return;
             }
             plugin.getTrainingRecorder().record(player.getUniqueId(), recordingSession, history);
-            if (player.hasPermission("anguard.bypass") || plugin.getTrainingRecorder().isRecording(player.getUniqueId())) return;
+            if ((player.hasPermission("silentac.bypass") || player.hasPermission("anguard.bypass")) || plugin.getTrainingRecorder().isRecording(player.getUniqueId())) return;
             if (!profile.predictionPending.compareAndSet(false, true)) return;
             long requestedAt = System.currentTimeMillis();
             try {

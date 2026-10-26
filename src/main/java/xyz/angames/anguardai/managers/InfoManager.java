@@ -1,107 +1,64 @@
 package xyz.angames.anguardai.managers;
 
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
-import xyz.angames.anguardai.Anguardai;
+import xyz.angames.anguardai.SilentAC;
 import xyz.angames.anguardai.data.PlayerProfile;
+import xyz.angames.anguardai.utils.Theme;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class InfoManager {
-    private final Anguardai anguardai;
-    private final JavaPlugin loader;
-    private final PlayerProfileManager profileManager;
-    private final Map<UUID, BukkitTask> activeInfoTasks = new ConcurrentHashMap<>();
+    private final SilentAC plugin;
+    private final PlayerProfileManager profiles;
+    private final Map<UUID, BukkitTask> tasks = new ConcurrentHashMap<>();
 
-    private final MiniMessage mm = MiniMessage.miniMessage();
-
-    public InfoManager(Anguardai anguardai, PlayerProfileManager profileManager) {
-        this.anguardai = anguardai;
-        this.profileManager = profileManager;
-        this.loader = Anguardai.getSpigotLoader();
-    }
+    public InfoManager(SilentAC plugin, PlayerProfileManager profiles) { this.plugin = plugin; this.profiles = profiles; }
 
     public void toggleInfoDisplay(Player sender, Player target) {
-        UUID senderId = sender.getUniqueId();
-        String prefix = anguardai.getConfig().getString("messages.prefix", "");
-
-        if (this.activeInfoTasks.containsKey(senderId)) {
-            BukkitTask task = this.activeInfoTasks.remove(senderId);
-            if (task != null) task.cancel();
-
-            sender.sendActionBar(Component.empty());
-            String msg = anguardai.getConfig().getString("messages.tracker_disabled", "Stopped.")
-                    .replace("{player}", target.getName());
-            sender.sendMessage(format(prefix + msg));
-
-        } else {
-            BukkitTask task = new BukkitRunnable() {
-                @Override
-                public void run() {
-                    if (sender.isOnline() && target.isOnline()) {
-                        PlayerProfile profile = profileManager.getProfile(target);
-                        if (profile != null) {
-
-                            String bufColor = "<green>";
-                            if (profile.buffer > 5.0) bufColor = "<yellow>";
-                            if (profile.buffer > 10.0) bufColor = "<red>";
-                            String bufClose = bufColor.replace("<", "</");
-                            String dmgColor = profile.damageMultiplier < 1.0 ? "<red>" : "<white>";
-                            String dmgClose = dmgColor.replace("<", "</");
-                            double sens = profile.aimProcessor.sensitivityX * 100;
-                            String sensString;
-                            if (sens <= 0) {
-                                sensString = "<gray>Calc...</gray>";
-                            } else {
-                                sensString = String.format("<white>%.0f%%</white>", sens);
-                            }
-                            String bar = String.format(
-                                    "<aqua>%s</aqua> <dark_gray>|</dark_gray> " +
-                                            "<gray>Ping: <white>%d</white> <dark_gray>|</dark_gray> " +
-                                            "<gray>VL: <red>%d</red> <dark_gray>|</dark_gray> " +
-                                            "<gray>Buf: %s%.1f%s <dark_gray>|</dark_gray> " +
-                                            "<gray>Sus: <#8D98FC>%.1f%%</#8D98FC> <dark_gray>|</dark_gray> " +
-                                            "<gray>Sens: %s <dark_gray>|</dark_gray> " +
-                                            "<gray>Dmg: %s%.2fx%s",
-
-                                    target.getName(),
-                                    target.getPing(),
-                                    profile.violationLevel,
-                                    bufColor, profile.buffer, bufClose,
-                                    profile.suspicion,
-                                    sensString,
-                                    dmgColor, profile.damageMultiplier, dmgClose
-                            );
-
-                            sender.sendActionBar(format(bar));
-                        }
-                    } else {
-                        this.cancel();
-                        activeInfoTasks.remove(senderId);
-                    }
-                }
-            }.runTaskTimer(this.loader, 0L, 1L);
-
-            this.activeInfoTasks.put(senderId, task);
-
-            String msg = anguardai.getConfig().getString("messages.tracker_enabled", "Tracking.")
-                    .replace("{player}", target.getName());
-            sender.sendMessage(format(prefix + msg));
+        UUID viewer = sender.getUniqueId();
+        BukkitTask previous = tasks.remove(viewer);
+        if (previous != null) {
+            previous.cancel();
+            if (!plugin.getRecordingManager().hasRecentActionBar(viewer)) sender.sendActionBar(Component.empty());
+            sender.sendMessage(Theme.message(plugin.getConfig(), "tracker_disabled", "player", target.getName()));
+            return;
         }
-    }
-
-    private Component format(String text) {
-        return mm.deserialize(text);
+        BukkitTask task = new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (!sender.isOnline() || !target.isOnline()) {
+                    cancel();
+                    tasks.remove(viewer);
+                    return;
+                }
+                if (plugin.getRecordingManager().hasRecentActionBar(viewer)) return;
+                PlayerProfile profile = profiles.getProfile(target);
+                if (profile == null) return;
+                String sensitivity = profile.aimProcessor.sensitivityX > 0
+                        ? String.format(Locale.ROOT, "%.0f%%", profile.aimProcessor.sensitivityX * 100) : "…";
+                sender.sendActionBar(Theme.text(String.format(Locale.ROOT,
+                        "<gradient:#FFFFFF:#AAAAAA>%s</gradient> <dark_gray>│</dark_gray> "
+                        + "<gray>Пинг: <white>%d</white> <dark_gray>│</dark_gray> "
+                        + "<gray>VL: <white>%d</white> <dark_gray>│</dark_gray> "
+                        + "<gray>Буфер: <white>%.1f</white> <dark_gray>│</dark_gray> "
+                        + "<gray>Оценка: <gradient:#FFFFFF:#B0B0B0>%.1f%%</gradient> <dark_gray>│</dark_gray> "
+                        + "<gray>Sens: <white>%s</white> <dark_gray>│</dark_gray> <gray>Урон: <white>%.2fx",
+                        Theme.escape(target.getName()), target.getPing(), profile.violationLevel, profile.buffer,
+                        profile.suspicion, sensitivity, profile.damageMultiplier)));
+            }
+        }.runTaskTimer(plugin, 0L, 2L);
+        tasks.put(viewer, task);
+        sender.sendMessage(Theme.message(plugin.getConfig(), "tracker_enabled", "player", target.getName()));
     }
 
     public void shutdown() {
-        this.activeInfoTasks.values().forEach(BukkitTask::cancel);
-        this.activeInfoTasks.clear();
+        tasks.values().forEach(BukkitTask::cancel);
+        tasks.clear();
     }
 }

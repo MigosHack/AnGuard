@@ -1,5 +1,10 @@
 import csv
 import http.client
+import shutil
+import socket
+import subprocess
+import sys
+import time
 import json
 import os
 from pathlib import Path
@@ -241,6 +246,61 @@ class PipelineTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             worker.join()
+
+    def test_local_launcher_reuses_private_key_and_supports_new_and_legacy_bindings(self):
+        root = self.root / 'launcher'
+        root.mkdir(exist_ok=True)
+        backend = Path(__file__).resolve().parents[1]
+        for name in ('local.py', 'server.py', 'core.py'):
+            shutil.copy2(backend / name, root / name)
+        for mode in ('generated', 'retained', 'new', 'legacy', 'both'):
+            environment = os.environ.copy()
+            environment.pop('SILENTAC_API_KEY', None)
+            environment.pop('ANGUARD_API_KEY', None)
+            new_key = 'new-test-only-key-123456789012345'
+            legacy_key = 'old-test-only-key-123456789012345'
+            if mode in ('new', 'both'):
+                environment['SILENTAC_API_KEY'] = new_key
+            if mode in ('legacy', 'both'):
+                environment['ANGUARD_API_KEY'] = legacy_key
+            with socket.socket() as sock:
+                sock.bind(('127.0.0.1', 0))
+                port = sock.getsockname()[1]
+            process = subprocess.Popen([sys.executable, str(root / 'local.py'), '--port', str(port)],
+                                       env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            try:
+                for _ in range(250):
+                    if process.poll() is not None:
+                        self.fail(process.stdout.read())
+                    try:
+                        connection = http.client.HTTPConnection('127.0.0.1', port, timeout=.2)
+                        connection.request('GET', '/health')
+                        response = connection.getresponse()
+                        self.assertFalse(json.loads(response.read())['ready'])
+                        connection.close()
+                        break
+                    except OSError:
+                        time.sleep(.02)
+                else:
+                    self.fail('Launcher startup timed out')
+                key_file = root / '.local/api-key'
+                self.assertEqual(key_file.stat().st_mode & 0o777, 0o600)
+                if mode == 'generated':
+                    retained_key = key_file.read_text()
+                if mode == 'retained':
+                    self.assertEqual(key_file.read_text(), retained_key)
+                key = new_key if mode in ('new', 'both') else legacy_key if mode == 'legacy' else key_file.read_text()
+                connection = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
+                connection.request('POST', '/predict_binary', encode(np.zeros((40, 8))),
+                                   {'Content-Type': 'application/octet-stream', 'X-Secret-Key': key})
+                response = connection.getresponse()
+                self.assertEqual(response.status, 503)
+                response.read()
+                connection.close()
+            finally:
+                process.terminate()
+                process.wait(timeout=10)
+                process.stdout.close()
 
     def write_csv(self, path):
         with path.open('w', newline='') as stream:

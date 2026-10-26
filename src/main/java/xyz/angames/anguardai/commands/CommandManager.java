@@ -1,150 +1,133 @@
 package xyz.angames.anguardai.commands;
 
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
-import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabExecutor;
 import org.bukkit.entity.Player;
-import xyz.angames.anguardai.Anguardai;
+import xyz.angames.anguardai.SilentAC;
 import xyz.angames.anguardai.data.PlayerProfile;
 import xyz.angames.anguardai.managers.InfoManager;
 import xyz.angames.anguardai.managers.PlayerProfileManager;
+import xyz.angames.anguardai.utils.RecordingDuration;
+import xyz.angames.anguardai.utils.Theme;
 
 import java.util.List;
+import java.util.Locale;
 
-public class CommandManager implements CommandExecutor {
-
-    private final Anguardai plugin;
+public class CommandManager implements TabExecutor {
+    private final SilentAC plugin;
     private final InfoManager infoManager;
     private final PlayerProfileManager profileManager;
-    private final MiniMessage mm = MiniMessage.miniMessage();
 
-    public CommandManager(Anguardai plugin, InfoManager infoManager, PlayerProfileManager profileManager) {
+    public CommandManager(SilentAC plugin, InfoManager infoManager, PlayerProfileManager profileManager) {
         this.plugin = plugin;
         this.infoManager = infoManager;
         this.profileManager = profileManager;
     }
 
     @Override
-    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (!sender.hasPermission("anguard.admin")) {
-            sender.sendMessage(getMsg("messages.no_permission"));
-            return true;
-        }
-
-        if (args.length == 0 || args[0].equalsIgnoreCase("help")) {
-            sendHelpMessage(sender);
-            return true;
-        }
-
-        if (args.length < 2) {
-            sender.sendMessage(getMsg("messages.invalid_usage"));
-            return true;
-        }
-
-        Player target = Bukkit.getPlayer(args[1]);
-        if (target == null) {
-            String raw = getRaw("messages.player_not_found").replace("{player}", args[1]);
-            sender.sendMessage(format(raw));
-            return true;
-        }
-
-        switch (args[0].toLowerCase()) {
+    public boolean onCommand(CommandSender sender, Command command, String alias, String[] args) {
+        if (!allowed(sender)) return message(sender, "no_permission");
+        if (args.length == 0 || args[0].equalsIgnoreCase("help")) return help(sender);
+        if (args[0].equalsIgnoreCase("recording")) return recording(sender, args);
+        if (args.length < 2) return message(sender, "invalid_usage");
+        Player target = Bukkit.getPlayerExact(args[1]);
+        if (target == null) return message(sender, "player_not_found", "player", args[1]);
+        switch (args[0].toLowerCase(Locale.ROOT)) {
             case "record":
-                if (args.length != 3 || !(args[2].equalsIgnoreCase("legit") || args[2].equalsIgnoreCase("cheat"))) {
-                    sender.sendMessage(Component.text("Usage: /anguard record <player> <legit|cheat>"));
-                    return true;
-                }
-                String session = plugin.getTrainingRecorder().start(target.getUniqueId(),
-                        args[2].equalsIgnoreCase("cheat") ? 1 : 0);
-                resetRecordingWindow(target);
-                sender.sendMessage(Component.text("Recording " + args[2] + " session " + session
-                        + ". Controlled tests only; stop with /anguard stop " + target.getName()));
-                break;
+                if (args.length != 3 || !isLabel(args[2])) return message(sender, "recording_usage");
+                plugin.getRecordingManager().start(sender, target, args[2].equalsIgnoreCase("cheat") ? 1 : 0, 0);
+                return true;
             case "stop":
-                plugin.getTrainingRecorder().stop(target.getUniqueId());
-                resetRecordingWindow(target);
-                sender.sendMessage(Component.text("Recording stopped."));
-                break;
-
+                return stop(sender, target);
             case "info":
-                if (!(sender instanceof Player playerSender)) {
-                    sender.sendMessage(getMsg("messages.player_only"));
-                    return true;
-                }
-                this.infoManager.toggleInfoDisplay(playerSender, target);
-                break;
-
+                if (!(sender instanceof Player player)) return message(sender, "player_only");
+                infoManager.toggleInfoDisplay(player, target);
+                return true;
             case "profile":
                 displayProfile(sender, target);
-                break;
-
+                return true;
             default:
-                sendHelpMessage(sender);
-                break;
+                return help(sender);
         }
+    }
 
+    private boolean recording(CommandSender sender, String[] args) {
+        if (args.length < 3 || args.length > 5) return message(sender, "recording_usage");
+        String action = args[1].toLowerCase(Locale.ROOT);
+        if (!action.equals("start") && !action.equals("stop")) return message(sender, "recording_usage");
+        if (action.equals("stop") && args.length != 3) return message(sender, "recording_usage");
+        Player target = Bukkit.getPlayerExact(args[2]);
+        if (target == null) return message(sender, "player_not_found", "player", args[2]);
+        if (action.equals("stop")) return stop(sender, target);
+        int label = plugin.getConfig().getString("recording.default-label", "legit").equalsIgnoreCase("cheat") ? 1 : 0;
+        long seconds = 0;
+        if (args.length >= 4) {
+            if (isLabel(args[3])) {
+                if (args.length != 4) return message(sender, "recording_usage");
+                label = args[3].equalsIgnoreCase("cheat") ? 1 : 0;
+            } else {
+                try { seconds = RecordingDuration.parse(args[3]); }
+                catch (IllegalArgumentException error) { return message(sender, "invalid_time"); }
+            }
+        }
+        if (args.length == 5) {
+            if (!isLabel(args[4])) return message(sender, "recording_usage");
+            label = args[4].equalsIgnoreCase("cheat") ? 1 : 0;
+        }
+        plugin.getRecordingManager().start(sender, target, label, seconds);
+        return true;
+    }
+
+    private boolean stop(CommandSender sender, Player target) {
+        boolean alreadyNotified = plugin.getRecordingManager().willNotify(target.getUniqueId(), sender);
+        if (!plugin.getRecordingManager().stop(target.getUniqueId(), true, "остановлено вручную")) {
+            return message(sender, "recording_not_active", "player", target.getName());
+        }
+        return alreadyNotified || message(sender, "recording_stop_confirmed", "player", target.getName());
+    }
+
+    private static boolean isLabel(String value) { return value.equalsIgnoreCase("legit") || value.equalsIgnoreCase("cheat"); }
+    private static boolean allowed(CommandSender sender) { return sender.hasPermission("silentac.admin") || sender.hasPermission("anguard.admin"); }
+    private boolean message(CommandSender sender, String key, String... replacements) {
+        sender.sendMessage(Theme.message(plugin.getConfig(), key, replacements));
         return true;
     }
 
     private void displayProfile(CommandSender sender, Player target) {
-        PlayerProfile profile = this.profileManager.getProfile(target);
-        if (profile != null) {
-            String clientBrand = target.getClientBrandName();
-            String clientDisplay = clientBrand != null ? clientBrand : "Unknown";
-
-            sender.sendMessage(getMsg("messages.profile_header"));
-
-            List<String> lines = plugin.getConfig().getStringList("messages.profile_lines");
-            for (String line : lines) {
-                String formatted = line
-                        .replace("{player}", target.getName())
-                        .replace("{ping}", String.valueOf(target.getPing()))
-                        .replace("{client}", clientDisplay)
-                        .replace("{version}", String.valueOf(target.getProtocolVersion()))
-                        .replace("{suspicion}", String.format("%.2f", profile.suspicion))
-                        .replace("{buffer}", String.format("%.2f", profile.buffer));
-
-                sender.sendMessage(format(formatted));
-            }
-
-            sender.sendMessage(getMsg("messages.profile_footer"));
-        }
-    }
-
-    private void resetRecordingWindow(Player target) {
         PlayerProfile profile = profileManager.getProfile(target);
         if (profile == null) return;
-        synchronized (profile) {
-            profile.recordingGeneration.incrementAndGet();
-            profile.movementHistory.clear();
-            profile.ticksStep = 0;
-            profile.buffer = 0;
-            profile.damageMultiplier = 1.0;
+        message(sender, "profile_header");
+        for (String line : plugin.getConfig().getStringList("messages.profile_lines")) {
+            sender.sendMessage(Theme.text(line.replace("{player}", Theme.escape(target.getName()))
+                    .replace("{ping}", Integer.toString(target.getPing()))
+                    .replace("{client}", Theme.escape(target.getClientBrandName() == null ? "Unknown" : target.getClientBrandName()))
+                    .replace("{version}", Integer.toString(target.getProtocolVersion()))
+                    .replace("{suspicion}", String.format(Locale.ROOT, "%.2f", profile.suspicion))
+                    .replace("{buffer}", String.format(Locale.ROOT, "%.2f", profile.buffer))));
         }
+        message(sender, "profile_footer");
     }
 
-    private void sendHelpMessage(CommandSender sender) {
-        sender.sendMessage(Component.text("/anguard record <player> <legit|cheat> - label a controlled session"));
-        sender.sendMessage(Component.text("/anguard stop <player> - stop recording"));
-        sender.sendMessage(format("<dark_gray><st>       </st> <#8D98FC><bold>AnGuard Help</bold> <dark_gray><st>       </st>"));
-        sender.sendMessage(format("<gray>/agac info <player> <dark_gray>- <white>Toggle tracker"));
-        sender.sendMessage(format("<gray>/agac profile <player> <dark_gray>- <white>View profile"));
+    private boolean help(CommandSender sender) {
+        message(sender, "help_header");
+        for (String line : plugin.getConfig().getStringList("messages.help_lines")) sender.sendMessage(Theme.text(line));
+        return true;
     }
 
-    private String getRaw(String path) {
-        String prefix = plugin.getConfig().getString("messages.prefix", "");
-        String msg = plugin.getConfig().getString(path, "<red>Message missing: " + path);
-        return prefix + msg;
-    }
-
-    private Component getMsg(String path) {
-        return format(getRaw(path));
-    }
-
-    private Component format(String text) {
-        return mm.deserialize(text);
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        if (!allowed(sender) || args.length == 0) return List.of();
+        List<String> choices = List.of();
+        if (args.length == 1) choices = List.of("recording", "info", "profile", "help");
+        else if (args[0].equalsIgnoreCase("recording")) {
+            if (args.length == 2) choices = List.of("start", "stop");
+            else if (args.length == 3) choices = Bukkit.getOnlinePlayers().stream().map(Player::getName).toList();
+            else if (args[1].equalsIgnoreCase("start") && args.length == 4) choices = List.of("15:00", "5m", "30s", "legit", "cheat");
+            else if (args[1].equalsIgnoreCase("start") && args.length == 5 && !isLabel(args[3])) choices = List.of("legit", "cheat");
+        } else if (args.length == 2) choices = Bukkit.getOnlinePlayers().stream().map(Player::getName).toList();
+        String prefix = args[args.length - 1].toLowerCase(Locale.ROOT);
+        return choices.stream().filter(value -> value.toLowerCase(Locale.ROOT).startsWith(prefix)).toList();
     }
 }

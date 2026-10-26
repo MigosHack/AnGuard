@@ -17,7 +17,7 @@ On Debian/Ubuntu, installs Python/venv using apt if missing (root or sudo requir
 If system Python is unsupported (e.g. 3.14), downloads a private Python 3.12 via uv.
 System Python is left unchanged. No Java is needed for the API.
 Default: 127.0.0.1:8000. Ctrl+C stops the API. No trained model is fabricated.
-The API key is retained privately in backend/.local/api-key unless ANGUARD_API_KEY is set.
+The API key is retained privately in backend/.local/api-key unless SILENTAC_API_KEY (or legacy ANGUARD_API_KEY) is set.
 HELP
     exit 0
 fi

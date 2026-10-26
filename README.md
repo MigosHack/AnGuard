@@ -1,12 +1,31 @@
-🛡️ AnGuard AI
+# SilentAC
 
-Сбор размеченных данных, обучение и локальный API: [инструкция](backend/README.md).
+Плагин проверки aim для Paper 1.21.4, ProtocolLib и Java 21. Собирает размеченные движения, отправляет окна `40 × 48` признаков локальному API и поддерживает обучение базовой логистической модели. По умолчанию работает в режиме наблюдения без наказаний.
 
-Neural Network AntiCheat for Minecraft 1.21+
-AnGuard is a revolutionary AntiCheat system that offloads 100% of the heavy Artificial Intelligence processing to a remote server. Unlike traditional AI plugins that consume server CPU and lower TPS, AnGuard acts as a lightweight data collector, streaming movement data to a dedicated API server backend for analysis.
+```text
+/anguard recording start Steve 15:00
+/anguard recording start Steve 15:00 cheat
+/anguard recording stop Steve
+/anguard info Steve
+/anguard profile Steve
+```
 
-Architecture:
-    Collection: The Java plugin captures raw packet data (Rotation, Acceleration, Sensitivity/GCD) using ProtocolLib.
-    Transmission: Movement history (40-tick sequences) is streamed via HTTP/2 to a remote API.
-    Inference: An ONNX LSTM (Long Short-Term Memory) model analyzes the behavioral pattern.
-    Verdict: The API server returns a confidence score. The plugin applies a Smart Buffer or Damage Reduction based on the result.
+`/silentac` — основная команда; `/anguard` и `/agac` — алиасы. Без метки используется `legit`. `15` означает 15 минут; также принимаются `15:00`, `30s`, `15m`, `1h`. Без времени запись бессрочная. При таймере отображается белый боссбар PROGRESS с обратным отсчётом; при ударах — actionbar со статистикой записи. Оформление бело-серое с градиентами.
+
+Сборка:
+
+```bash
+bash gradlew build
+```
+
+Готовый файл: `build/libs/SilentAC-3.0.jar`. На остановленном сервере удалите прежний JAR AnGuard перед установкой SilentAC. Старый каталог данных автоматически переносится, если каталог SilentAC ещё не существует. Перед обновлением старого оформления сохраняется резервная копия конфигурации.
+
+Бэкенд:
+
+```bash
+bash start-backend.sh
+```
+
+[Полная инструкция: обновление, разметка, CSV/JSONL, обучение и оценка качества](backend/README.md).
+
+Работоспособность проверяется тестами; качество детекта требует реальных независимых данных. Признаки относятся к вращению, а не к полёту, скорости бега или reach. Отсутствие ложных срабатываний не гарантируется.

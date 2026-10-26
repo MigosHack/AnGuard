@@ -2,7 +2,7 @@ package xyz.angames.anguardai.managers;
 
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
-import xyz.angames.anguardai.Anguardai;
+import xyz.angames.anguardai.SilentAC;
 import xyz.angames.anguardai.checks.Check;
 import xyz.angames.anguardai.checks.impl.AimCheck;
 import xyz.angames.anguardai.data.PlayerProfile;
@@ -18,12 +18,12 @@ public class PlayerProfileManager {
     private final Map<UUID, PlayerProfile> profiles = new ConcurrentHashMap<>();
     private final Map<UUID, List<Check>> playerChecks = new ConcurrentHashMap<>();
 
-    private final Anguardai anguardai;
+    private final SilentAC anguardai;
     private final JavaPlugin loader;
 
-    public PlayerProfileManager(Anguardai anguardai) {
+    public PlayerProfileManager(SilentAC anguardai) {
         this.anguardai = anguardai;
-        this.loader = Anguardai.getSpigotLoader();
+        this.loader = SilentAC.getSpigotLoader();
     }
 
     public void createProfile(Player player) {
@@ -40,7 +40,7 @@ public class PlayerProfileManager {
     }
 
     public void removeProfile(Player player) {
-        this.anguardai.getTrainingRecorder().stop(player.getUniqueId());
+        this.anguardai.getRecordingManager().stop(player.getUniqueId(), false, "");
         this.profiles.remove(player.getUniqueId());
         this.playerChecks.remove(player.getUniqueId());
     }

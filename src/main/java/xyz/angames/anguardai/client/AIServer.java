@@ -1,6 +1,6 @@
 package xyz.angames.anguardai.client;
 
-import xyz.angames.anguardai.Anguardai;
+import xyz.angames.anguardai.SilentAC;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -10,13 +10,13 @@ import java.util.concurrent.CompletableFuture;
 
 public class AIServer {
 
-    private final Anguardai plugin;
+    private final SilentAC plugin;
     private final HttpClient client;
     private final String apiUrl;
     private final String secretKey;
     private final String serverPort;
 
-    public AIServer(Anguardai plugin) {
+    public AIServer(SilentAC plugin) {
         this.plugin = plugin;
         this.client = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
@@ -25,14 +25,15 @@ public class AIServer {
 
         String ip = plugin.getConfig().getString("vds.ip");
         int port = plugin.getConfig().getInt("vds.port");
-        String environmentKey = System.getenv("ANGUARD_API_KEY");
+        String environmentKey = System.getenv("SILENTAC_API_KEY");
+        if (environmentKey == null) environmentKey = System.getenv("ANGUARD_API_KEY");
         this.secretKey = environmentKey != null ? environmentKey : plugin.getConfig().getString("vds.secret_key", "");
         this.apiUrl = "http://" + ip + ":" + port + "/predict_binary";
 
         int mcPort = plugin.getServer().getPort();
         this.serverPort = String.valueOf(mcPort);
 
-        plugin.getLogger().info("§e[Debug] AI Client Configured: " + apiUrl);
+        plugin.getLogger().info("SilentAC API: " + apiUrl);
     }
 
     public CompletableFuture<String> sendRequest(byte[] flatBufferData) {
@@ -48,7 +49,7 @@ public class AIServer {
         return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
                 .thenApply(response -> {
                     if (response.statusCode() != 200) {
-                        plugin.getLogger().warning("§c[Debug] API Error: " + response.statusCode());
+                        plugin.getLogger().warning("SilentAC API error: " + response.statusCode());
                         if (response.statusCode() == 401) plugin.getLogger().warning("-> Invalid Secret Key!");
                         if (response.statusCode() == 403) plugin.getLogger().warning("-> License Limit Reached!");
                         return null;
@@ -56,7 +57,7 @@ public class AIServer {
                     return response.body();
                 })
                 .exceptionally(e -> {
-                    plugin.getLogger().severe("§c[Debug] Connection Failed: " + e.getMessage());
+                    plugin.getLogger().severe("SilentAC API connection failed: " + e.getMessage());
                     if (!e.getMessage().contains("timed out")) {
                         e.printStackTrace();
                     }
