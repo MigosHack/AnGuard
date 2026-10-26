@@ -4,15 +4,26 @@
 
 ## Установка и безопасный запуск
 
-Нужны JDK 21 и Python 3.12. В текущей облачной среде:
+Из любой папки, где вы хотите разместить проект:
 
 ```bash
-cd /workspace/AnGuard
-bash /workspace/setup-anguard.sh
-python3 -m venv /workspace/anguard-venv
-/workspace/anguard-venv/bin/pip install -r backend/requirements.txt
-/workspace/anguard-venv/bin/python backend/local.py
+git clone https://github.com/MigosHack/AnGuard.git
+cd AnGuard
+bash start-backend.sh
 ```
+
+Если изменения пока находятся в ветке `work`, клонируйте с `git clone -b work https://github.com/MigosHack/AnGuard.git`.
+
+Один скрипт создаёт `backend/.venv`, устанавливает закреплённые зависимости и запускает API. На Debian/Ubuntu при отсутствии Python/venv он устанавливает их через apt (нужны root или sudo); на других системах нужен Python 3.10–3.13 с venv. Для самого бэкенда Java не нужна. Повторный запуск переиспользует окружение и ключ. Путь к проекту может быть любым, включая пробелы; скрипт можно вызывать из другой директории. Для остановки нажмите Ctrl+C.
+
+```bash
+bash start-backend.sh --port 8000
+bash start-backend.sh --model backend/models/aim-v1.json
+bash start-backend.sh --install-only
+bash start-backend.sh --test
+```
+
+Без `--model` API запускается без модели: это позволяет подготовить сервер до сбора данных, но предсказания ещё недоступны. Пути к модели и данным задаются относительно текущей папки shell. Если порт занят, выберите другой через `--port` и измените `vds.port` плагина.
 
 Сервер слушает только loopback:8000. `local.py` создаёт случайный ключ с правами 0600 в игнорируемом `backend/.local/api-key`; не выводит его. При заданном `ANGUARD_API_KEY` использует его вместо локального файла. Не используйте публичный ключ из старого config.yml.
 
@@ -51,7 +62,7 @@ Plain HTTP поддерживается только на одной машин�
 ## Обучение и проверка
 
 ```bash
-/workspace/anguard-venv/bin/python backend/train.py \
+bash start-backend.sh --train \
   backend/recordings/*.jsonl --output backend/models/aim-v1.json \
   --target-fpr 0.001
 ```
@@ -67,7 +78,7 @@ JSON модели содержит параметры, контрольную с
 Остановите API и запустите явно выбранную модель:
 
 ```bash
-/workspace/anguard-venv/bin/python backend/local.py --model backend/models/aim-v1.json
+bash start-backend.sh --model backend/models/aim-v1.json
 ```
 
 Проверяйте `GET /health` → `ready=true`, затем изучайте оценки и реальные ложные тревоги в режиме `ai.observe-only: true`. Без готовой модели/при ошибках API плагин сбрасывает накопление и уменьшение урона; запрос ограничен 5 секундами и одним активным предсказанием на игрока. Не включайте наказания по синтетическим тестам. После проверки на реальных отложенных данных и живого наблюдения можно отдельно включить `ai.observe-only: false` и нужное действие в серверной конфигурации, перезапустив сервер. Никакого «ноль фолсов» этот проект не обещает.
@@ -75,7 +86,7 @@ JSON модели содержит параметры, контрольную с
 ## Тесты разработки
 
 ```bash
-PYTHONPATH=backend /workspace/anguard-venv/bin/python -m unittest discover -s backend/tests -v
+bash start-backend.sh --test
 ```
 
 Тесты проверяют обучение, разбиение без общих игроков, отказ при плохих данных, HTTP-аутентификацию, отсутствие модели, бинарный формат и предсказания. Синтетические данные создаются во временном каталоге и не превращаются в рабочую модель.
@@ -84,7 +95,7 @@ PYTHONPATH=backend /workspace/anguard-venv/bin/python -m unittest discover -s ba
 
 ```bash
 mkdir -p /tmp/anguard-fixture
-/workspace/toolchains/jdk-21.0.13+9/bin/javac -cp build/libs/anguardai-3.0.jar -d /tmp/anguard-fixture backend/tests/FlatBufferFixture.java
-/workspace/toolchains/jdk-21.0.13+9/bin/java -cp /tmp/anguard-fixture:build/libs/anguardai-3.0.jar FlatBufferFixture /tmp/anguard-fixture/window.bin
-ANGUARD_JAVA_FIXTURE=/tmp/anguard-fixture/window.bin PYTHONPATH=backend /workspace/anguard-venv/bin/python -m unittest discover -s backend/tests -v
+javac -cp build/libs/anguardai-3.0.jar -d /tmp/anguard-fixture backend/tests/FlatBufferFixture.java
+java -cp /tmp/anguard-fixture:build/libs/anguardai-3.0.jar FlatBufferFixture /tmp/anguard-fixture/window.bin
+ANGUARD_JAVA_FIXTURE=/tmp/anguard-fixture/window.bin bash start-backend.sh --test
 ```
