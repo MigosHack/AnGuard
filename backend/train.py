@@ -10,7 +10,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GroupShuffleSplit
 from sklearn.preprocessing import StandardScaler
 
-from core import SCHEMA, features
+from core import SCHEMA, COLUMNS, AGGREGATES, features, validate_frames
 
 
 def load(paths):
@@ -24,7 +24,7 @@ def load(paths):
                     if len(raw) > 131072:
                         raise ValueError('Oversized record')
                     r = json.loads(raw)
-                    if r['schema'] != SCHEMA or type(r['label']) is not int or r['label'] not in (0, 1):
+                    if r['schema'] not in (1, SCHEMA) or type(r['label']) is not int or r['label'] not in (0, 1):
                         raise ValueError('Invalid schema or label')
                     player, session = r['player_id'], r['session_id']
                     if not isinstance(player, str) or not player or not isinstance(session, str) or not session:
@@ -33,9 +33,10 @@ def load(paths):
                     if session in sessions and sessions[session] != identity:
                         raise ValueError('Session has inconsistent player or label')
                     sessions[session] = identity
-                    values = features(r['frames'])
+                    expanded = validate_frames(r['frames'], r['schema'])
+                    values = features(expanded)
                     # Duplicated files/windows must not inflate metrics or training weights.
-                    fingerprint = hashlib.sha256(json.dumps([player, r['frames']], sort_keys=True).encode()).digest()
+                    fingerprint = hashlib.sha256(player.encode() + expanded[:, :8].astype('<f4').tobytes()).digest()
                     if fingerprint in seen:
                         raise ValueError('Duplicate player window; remove duplicated inputs')
                     seen.add(fingerprint)
@@ -110,7 +111,7 @@ def train(paths, output, seed=42, target_fpr=.001):
               'test': metrics(scores[test], y[test], groups[test], threshold),
               'warning': 'Baseline score is not a calibrated probability. Synthetic tests do not establish game accuracy. '
                          'Zero observed false alarms does not prove zero risk. Keep observation mode enabled.'}
-    artifact = {'schema': SCHEMA, 'kind': 'standardized-logistic-v1', 'mean': scaler.mean_.tolist(),
+    artifact = {'schema': SCHEMA, 'kind': 'standardized-logistic-v2', 'columns': list(COLUMNS), 'aggregates': list(AGGREGATES), 'mean': scaler.mean_.tolist(),
                 'scale': scaler.scale_.tolist(), 'weights': model.coef_[0].tolist(),
                 'bias': float(model.intercept_[0]), 'threshold': threshold,
                 'dataset_sha256': digest, 'report': report}

@@ -25,7 +25,7 @@ public final class TickData extends Table {
     public float gcdErrorPitch() { int o = __offset(18); return o != 0 ? bb.getFloat(o + bb_pos) : 0.0f; }
 
     public static int createTickData(FlatBufferBuilder builder, float deltaYaw, float deltaPitch, float accelYaw, float accelPitch, float jerkPitch, float jerkYaw, float gcdErrorYaw, float gcdErrorPitch) {
-        builder.startTable(8);
+        builder.startTable(9);
         TickData.addGcdErrorPitch(builder, gcdErrorPitch);
         TickData.addGcdErrorYaw(builder, gcdErrorYaw);
         TickData.addJerkYaw(builder, jerkYaw);
@@ -36,7 +36,15 @@ public final class TickData extends Table {
         TickData.addDeltaYaw(builder, deltaYaw);
         return TickData.endTickData(builder);
     }
-    public static void startTickData(FlatBufferBuilder builder) { builder.startTable(8); }
+    public float derived(int j) { int o = __offset(20); return o != 0 ? bb.getFloat(__vector(o) + j * 4) : 0.0f; }
+    public int derivedLength() { int o = __offset(20); return o != 0 ? __vector_len(o) : 0; }
+    public static int createDerivedVector(FlatBufferBuilder builder, float[] values) {
+        builder.startVector(4, values.length, 4);
+        for (int i = values.length - 1; i >= 0; i--) builder.addFloat(values[i]);
+        return builder.endVector();
+    }
+    public static void addDerived(FlatBufferBuilder builder, int offset) { builder.addOffset(8, offset, 0); }
+    public static void startTickData(FlatBufferBuilder builder) { builder.startTable(9); }
     public static void addDeltaYaw(FlatBufferBuilder builder, float deltaYaw) { builder.addFloat(0, deltaYaw, 0.0f); }
     public static void addDeltaPitch(FlatBufferBuilder builder, float deltaPitch) { builder.addFloat(1, deltaPitch, 0.0f); }
     public static void addAccelYaw(FlatBufferBuilder builder, float accelYaw) { builder.addFloat(2, accelYaw, 0.0f); }

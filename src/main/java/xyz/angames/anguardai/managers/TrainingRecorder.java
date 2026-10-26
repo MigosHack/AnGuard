@@ -3,6 +3,7 @@ package xyz.angames.anguardai.managers;
 import com.google.gson.Gson;
 import xyz.angames.anguardai.Anguardai;
 import xyz.angames.anguardai.data.TickDataPOJO;
+import xyz.angames.anguardai.data.MovementFeatures;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -71,12 +72,8 @@ public final class TrainingRecorder implements AutoCloseable {
     public void record(UUID player, String expectedSession, List<TickDataPOJO> frames) {
         Session session = sessions.get(player);
         if (session == null || !session.id().equals(expectedSession) || !healthy || !running) return;
-        // Column order matches the existing FlatBuffers wire format (pitch jerk precedes yaw jerk).
-        float[][] values = frames.stream().map(t -> new float[] {
-                t.deltaYaw, t.deltaPitch, t.accelYaw, t.accelPitch,
-                t.jerkPitch, t.jerkYaw, t.gcdErrorYaw, t.gcdErrorPitch
-        }).toArray(float[][]::new);
-        String line = gson.toJson(Map.of("schema", 1, "player_id", player.toString(),
+        float[][] values = MovementFeatures.expand(frames);
+        String line = gson.toJson(Map.of("schema", MovementFeatures.SCHEMA, "player_id", player.toString(),
                 "session_id", session.id(), "label", session.label(),
                 "timestamp_ms", System.currentTimeMillis(), "frames", values));
         if (!queue.offer(line) && dropped.incrementAndGet() % 100 == 1) {
