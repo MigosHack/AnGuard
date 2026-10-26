@@ -16,6 +16,7 @@ public class Anguardai extends JavaPlugin {
     private PlayerProfileManager playerProfileManager;
     private PacketManager packetManager;
     private AIServer aiServer;
+    private TrainingRecorder trainingRecorder;
 
     @Override
     public void onEnable() {
@@ -29,6 +30,7 @@ public class Anguardai extends JavaPlugin {
         getLogger().info("§b[AnGuard] §fCore module starting...");
 
         try {
+            this.trainingRecorder = new TrainingRecorder(this);
             this.playerProfileManager = new PlayerProfileManager(this);
             this.infoManager = new InfoManager(this, this.playerProfileManager);
             this.aiServer = new AIServer(this);
@@ -58,6 +60,7 @@ public class Anguardai extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (this.trainingRecorder != null) this.trainingRecorder.close();
         if (this.infoManager != null) this.infoManager.shutdown();
         getLogger().info("§c[AnGuard] §fCore module has been disabled.");
     }
@@ -68,4 +71,5 @@ public class Anguardai extends JavaPlugin {
     public InfoManager getInfoManager() { return this.infoManager; }
     public PacketManager getPacketManager() { return this.packetManager; }
     public AIServer getAiServer() { return this.aiServer; }
+    public TrainingRecorder getTrainingRecorder() { return this.trainingRecorder; }
 }

@@ -52,6 +52,22 @@ public class CommandManager implements CommandExecutor {
         }
 
         switch (args[0].toLowerCase()) {
+            case "record":
+                if (args.length != 3 || !(args[2].equalsIgnoreCase("legit") || args[2].equalsIgnoreCase("cheat"))) {
+                    sender.sendMessage(Component.text("Usage: /anguard record <player> <legit|cheat>"));
+                    return true;
+                }
+                String session = plugin.getTrainingRecorder().start(target.getUniqueId(),
+                        args[2].equalsIgnoreCase("cheat") ? 1 : 0);
+                resetRecordingWindow(target);
+                sender.sendMessage(Component.text("Recording " + args[2] + " session " + session
+                        + ". Controlled tests only; stop with /anguard stop " + target.getName()));
+                break;
+            case "stop":
+                plugin.getTrainingRecorder().stop(target.getUniqueId());
+                resetRecordingWindow(target);
+                sender.sendMessage(Component.text("Recording stopped."));
+                break;
 
             case "info":
                 if (!(sender instanceof Player playerSender)) {
@@ -98,7 +114,21 @@ public class CommandManager implements CommandExecutor {
         }
     }
 
+    private void resetRecordingWindow(Player target) {
+        PlayerProfile profile = profileManager.getProfile(target);
+        if (profile == null) return;
+        synchronized (profile) {
+            profile.recordingGeneration.incrementAndGet();
+            profile.movementHistory.clear();
+            profile.ticksStep = 0;
+            profile.buffer = 0;
+            profile.damageMultiplier = 1.0;
+        }
+    }
+
     private void sendHelpMessage(CommandSender sender) {
+        sender.sendMessage(Component.text("/anguard record <player> <legit|cheat> - label a controlled session"));
+        sender.sendMessage(Component.text("/anguard stop <player> - stop recording"));
         sender.sendMessage(format("<dark_gray><st>       </st> <#8D98FC><bold>AnGuard Help</bold> <dark_gray><st>       </st>"));
         sender.sendMessage(format("<gray>/agac info <player> <dark_gray>- <white>Toggle tracker"));
         sender.sendMessage(format("<gray>/agac profile <player> <dark_gray>- <white>View profile"));

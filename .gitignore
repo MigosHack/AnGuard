@@ -21,3 +21,7 @@ Thumbs.db
 # Virtual Environment (Python)
 venv/
 __pycache__/
+# Local AI credentials, recordings and trained models
+backend/.local/
+backend/models/
+backend/recordings/

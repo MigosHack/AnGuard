@@ -27,14 +27,21 @@ public class AimCheck extends Check {
 
     public AimCheck(Player player, PlayerProfile profile, Anguardai anguardai) {
         super(player, profile, anguardai);
-        this.sequence = plugin.getConfig().getInt("ai.sequence", 40);
-        this.step = plugin.getConfig().getInt("ai.step", 10);
+        this.sequence = PlayerProfile.HISTORY_SIZE;
+        this.step = Math.max(1, plugin.getConfig().getInt("ai.step", 10));
+        if (plugin.getConfig().getInt("ai.sequence", 40) != sequence) {
+            plugin.getLogger().warning("Training schema v1 requires ai.sequence=40; using 40.");
+        }
     }
 
     @Override
     public void onDamage(EntityDamageByEntityEvent event) {
         if (event.getDamager().equals(this.player)) {
-            if (this.profile.damageMultiplier < 1.0) {
+            if (!plugin.getConfig().getBoolean("ai.observe-only", true)
+                    && !plugin.getTrainingRecorder().isRecording(player.getUniqueId())
+                    && plugin.getConfig().getBoolean("ai.damage-reduction.enabled", false)
+                    && System.currentTimeMillis() - profile.lastPredictionTime < 5000
+                    && this.profile.damageMultiplier < 1.0) {
                 event.setDamage(event.getDamage() * this.profile.damageMultiplier);
             }
             this.profile.isAttacking = true;
@@ -50,6 +57,16 @@ public class AimCheck extends Check {
     public void onMove(PlayerMoveEvent event) {}
 
     public void handlePacketMovement(float toYaw, float toPitch, boolean onGround) {
+        if (!Float.isFinite(toYaw) || !Float.isFinite(toPitch)) return;
+        if (System.currentTimeMillis() - this.profile.lastTeleportTime < 2000) {
+            synchronized (this.profile) {
+                this.profile.movementHistory.clear();
+                this.profile.ticksStep = 0;
+                this.profile.aimProcessor.reset();
+                resetProfile(toYaw, toPitch);
+            }
+            return;
+        }
         if (this.profile.lastYaw == toYaw && this.profile.lastPitch == toPitch) return;
 
 
@@ -85,42 +102,83 @@ public class AimCheck extends Check {
     }
 
     private void sendData() {
-        if (this.player.hasPermission("anguard.bypass")) return;
-
         List<TickDataPOJO> history = new ArrayList<>(this.profile.movementHistory);
-
-
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+        String recordingSession = plugin.getTrainingRecorder().sessionId(player.getUniqueId());
+        long generation = profile.recordingGeneration.get();
+        // Bukkit APIs and labels are read on the server thread. Recording is independent of inference.
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!player.isOnline() || plugin.getPlayerProfileManager().getProfile(player) != profile
+                    || profile.recordingGeneration.get() != generation) return;
+            if (player.getPing() > 200 || Bukkit.getTPS()[0] < 18.0
+                    || System.currentTimeMillis() - profile.lastTeleportTime < 2000) {
+                profile.damageMultiplier = 1.0;
+                profile.buffer = 0;
+                return;
+            }
+            plugin.getTrainingRecorder().record(player.getUniqueId(), recordingSession, history);
+            if (player.hasPermission("anguard.bypass") || plugin.getTrainingRecorder().isRecording(player.getUniqueId())) return;
+            if (!profile.predictionPending.compareAndSet(false, true)) return;
+            long requestedAt = System.currentTimeMillis();
             try {
                 byte[] binaryData = serialize(history);
-                plugin.getAiServer().sendRequest(binaryData).thenAccept(this::onResponse);
+                plugin.getAiServer().sendRequest(binaryData)
+                        .thenAccept(response -> onResponse(response, generation, requestedAt))
+                        .whenComplete((ignored, error) -> profile.predictionPending.set(false));
             } catch (Exception e) {
+                profile.predictionPending.set(false);
+                plugin.getLogger().warning("Could not submit AI window: " + e.getMessage());
             }
         });
     }
 
-    private void onResponse(String response) {
-        if (response == null) return;
+    private void onResponse(String response, long generation, long requestedAt) {
+        if (response == null) {
+            clearInference(generation);
+            return;
+        }
         try {
             JsonObject json = GSON.fromJson(response, JsonObject.class);
-            if (!json.has("confidence")) return;
+            if (!json.has("confidence") || !json.has("ready") || !json.get("ready").getAsBoolean()
+                    || !json.has("threshold")) {
+                clearInference(generation);
+                return;
+            }
 
             double probability = json.get("confidence").getAsDouble() / 100.0;
+            double threshold = json.get("threshold").getAsDouble() / 100.0;
+            if (!Double.isFinite(probability) || probability < 0 || probability > 1
+                    || !Double.isFinite(threshold) || threshold < 0 || threshold > 1) {
+                clearInference(generation);
+                return;
+            }
 
             Bukkit.getScheduler().runTask(plugin, () -> {
+                if (!player.isOnline() || plugin.getPlayerProfileManager().getProfile(player) != profile
+                        || profile.recordingGeneration.get() != generation) return;
                 this.profile.suspicion = probability * 100.0;
+                if (plugin.getConfig().getBoolean("ai.observe-only", true)
+                        || plugin.getTrainingRecorder().isRecording(player.getUniqueId())
+                        || profile.lastTeleportTime > requestedAt
+                        || System.currentTimeMillis() - requestedAt > 5000
+                        || player.getPing() > 200 || Bukkit.getTPS()[0] < 18.0
+                        || System.currentTimeMillis() - profile.lastTeleportTime < 2000) {
+                    profile.damageMultiplier = 1.0;
+                    profile.buffer = 0;
+                    return;
+                }
+                profile.lastPredictionTime = System.currentTimeMillis();
 
-                double cheatProb = 0.90;
-                double legitProb = 0.10;
+                double cheatProb = threshold;
 
                 if (probability > cheatProb) {
                     this.profile.buffer += (probability - cheatProb) * plugin.getConfig().getDouble("ai.buffer.multiplier", 100.0);
-                } else if (probability < legitProb) {
+                } else {
                     this.profile.buffer = Math.max(0, this.profile.buffer - plugin.getConfig().getDouble("ai.buffer.decrease", 0.25));
                 }
 
                 double drProb = plugin.getConfig().getDouble("ai.damage-reduction.suspicion", 0.9);
-                if (probability >= drProb) {
+                if (plugin.getConfig().getBoolean("ai.damage-reduction.enabled", false)
+                        && drProb >= 0 && drProb < 1 && probability > threshold && probability >= drProb) {
                     double ratio = (probability - drProb) / (1.0 - drProb);
                     this.profile.damageMultiplier = 1.0 - Math.min(1.0, ratio);
                 } else {
@@ -136,7 +194,19 @@ public class AimCheck extends Check {
                     }
                 }
             });
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            clearInference(generation);
+        }
+    }
+
+    private void clearInference(long generation) {
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (plugin.getPlayerProfileManager().getProfile(player) == profile
+                    && profile.recordingGeneration.get() == generation) {
+                profile.buffer = 0;
+                profile.damageMultiplier = 1.0;
+            }
+        });
     }
 
 

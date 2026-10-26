@@ -15,12 +15,14 @@ checks:
 
 
 autoban:
-  enable: true
+  enable: false
   command: 'kick {player} [AnGuard] Unfair Advantage detected by Neural Network!'
   # Broadcast message (leave empty '' to disable)
   broadcast-message: ''
 
 ai:
+  # Observe scores only until independently validated on real players.
+  observe-only: true
   # DON'T TOUCH IF YOU DON'T KNOW WHAT THIS DOES!!!
   # DON'T touch IF YOU DON'T KNOW WHAT THIS DOES!!!
   # DON'T touch IF YOU DON'T KNOW WHAT THIS DOES!!!
@@ -49,7 +51,7 @@ ai:
   # Damage Reduction (Soft Ban)
   # If AI is suspicious but the buffer isn't full yet, reduce damage dealt.
   damage-reduction:
-    enabled: true
+    enabled: false
     # Suspicion threshold to start reducing damage (0.0 to 1.0)
     suspicion: 0.9
     # Reduction Strength (1.0 = Reduce to 0 damage at 100% confidence)

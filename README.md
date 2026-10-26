@@ -1,5 +1,7 @@
 🛡️ AnGuard AI
 
+Сбор размеченных данных, обучение и локальный API: [инструкция](backend/README.md).
+
 Neural Network AntiCheat for Minecraft 1.21+
 AnGuard is a revolutionary AntiCheat system that offloads 100% of the heavy Artificial Intelligence processing to a remote server. Unlike traditional AI plugins that consume server CPU and lower TPS, AnGuard acts as a lightweight data collector, streaming movement data to a dedicated API server backend for analysis.
 
