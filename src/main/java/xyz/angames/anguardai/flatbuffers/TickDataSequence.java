@@ -15,14 +15,16 @@ public final class TickDataSequence extends Table {
     public TickDataSequence __assign(int _i, ByteBuffer _bb) { __init(_i, _bb); return this; }
     public TickData ticks(int j) { return ticks(new TickData(), j); }
     public TickData ticks(TickData obj, int j) { int o = __offset(4); return o != 0 ? obj.__assign(__indirect(__vector(o) + j * 4), bb) : null; }
+    public int schemaVersion() { int o = __offset(6); return o != 0 ? bb.getShort(o + bb_pos) & 0xffff : 1; }
+    public static void addSchemaVersion(FlatBufferBuilder builder, int version) { builder.addShort(1, (short) version, (short) 1); }
     public int ticksLength() { int o = __offset(4); return o != 0 ? __vector_len(o) : 0; }
 
     public static int createTickDataSequence(FlatBufferBuilder builder, int ticksOffset) {
-        builder.startTable(1);
+        builder.startTable(2);
         TickDataSequence.addTicks(builder, ticksOffset);
         return TickDataSequence.endTickDataSequence(builder);
     }
-    public static void startTickDataSequence(FlatBufferBuilder builder) { builder.startTable(1); }
+    public static void startTickDataSequence(FlatBufferBuilder builder) { builder.startTable(2); }
     public static void addTicks(FlatBufferBuilder builder, int ticksOffset) { builder.addOffset(0, ticksOffset, 0); }
     public static int createTicksVector(FlatBufferBuilder builder, int[] data) {
         builder.startVector(4, data.length, 4);

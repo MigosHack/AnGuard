@@ -11,6 +11,7 @@ import xyz.angames.anguardai.Anguardai;
 import xyz.angames.anguardai.checks.Check;
 import xyz.angames.anguardai.data.PlayerProfile;
 import xyz.angames.anguardai.data.TickDataPOJO;
+import xyz.angames.anguardai.data.MovementFeatures;
 import xyz.angames.anguardai.flatbuffers.TickData;
 import xyz.angames.anguardai.flatbuffers.TickDataSequence;
 
@@ -30,7 +31,7 @@ public class AimCheck extends Check {
         this.sequence = PlayerProfile.HISTORY_SIZE;
         this.step = Math.max(1, plugin.getConfig().getInt("ai.step", 10));
         if (plugin.getConfig().getInt("ai.sequence", 40) != sequence) {
-            plugin.getLogger().warning("Training schema v1 requires ai.sequence=40; using 40.");
+            plugin.getLogger().warning("Training schema v2 requires ai.sequence=40; using 40.");
         }
     }
 
@@ -239,11 +240,14 @@ public class AimCheck extends Check {
         FlatBufferBuilder builder = BUILDER.get();
         builder.clear();
         int[] tickOffsets = new int[ticks.size()];
+        float[][] features = MovementFeatures.expand(ticks);
 
         for (int i = 0; i < ticks.size(); i++) {
             TickDataPOJO t = ticks.get(i);
 
+            int derived = TickData.createDerivedVector(builder, java.util.Arrays.copyOfRange(features[i], 8, MovementFeatures.COUNT));
             TickData.startTickData(builder);
+            TickData.addDerived(builder, derived);
             TickData.addDeltaYaw(builder, t.deltaYaw);
             TickData.addDeltaPitch(builder, t.deltaPitch);
             TickData.addAccelYaw(builder, t.accelYaw);
@@ -258,6 +262,7 @@ public class AimCheck extends Check {
         int ticksVector = TickDataSequence.createTicksVector(builder, tickOffsets);
         TickDataSequence.startTickDataSequence(builder);
         TickDataSequence.addTicks(builder, ticksVector);
+        TickDataSequence.addSchemaVersion(builder, MovementFeatures.SCHEMA);
         int endOffset = TickDataSequence.endTickDataSequence(builder);
         builder.finish(endOffset);
         ByteBuffer buf = builder.dataBuffer();

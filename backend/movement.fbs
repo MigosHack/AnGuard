@@ -9,10 +9,12 @@ table TickData {
   jerk_yaw:float;
   gcd_error_yaw:float;
   gcd_error_pitch:float;
+  derived:[float]; // v2: 40 additional per-frame features, ordered as core.COLUMNS[8:]
 }
 
 table TickDataSequence {
   ticks:[TickData];
+  schema_version:ushort = 1; // v1: 8 columns; v2: 48 columns
 }
 
 root_type TickDataSequence;

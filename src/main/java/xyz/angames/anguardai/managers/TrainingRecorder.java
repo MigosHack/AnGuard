@@ -3,6 +3,8 @@ package xyz.angames.anguardai.managers;
 import com.google.gson.Gson;
 import xyz.angames.anguardai.Anguardai;
 import xyz.angames.anguardai.data.TickDataPOJO;
+import xyz.angames.anguardai.data.MovementFeatures;
+import xyz.angames.anguardai.data.TrainingCsv;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -20,7 +22,9 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class TrainingRecorder implements AutoCloseable {
     private record Session(String id, int label) {}
     private final Map<UUID, Session> sessions = new ConcurrentHashMap<>();
-    private final ArrayBlockingQueue<String> queue = new ArrayBlockingQueue<>(1024);
+    private record RecordedWindow(String json, float[][] values, int label, UUID player,
+                                  UUID session, UUID id, long timestamp) {}
+    private final ArrayBlockingQueue<RecordedWindow> queue = new ArrayBlockingQueue<>(1024);
     private final AtomicLong dropped = new AtomicLong();
     private final Thread writer;
     private final Anguardai plugin;
@@ -32,16 +36,38 @@ public final class TrainingRecorder implements AutoCloseable {
         this.plugin = plugin;
         Path directory = plugin.getDataFolder().toPath().resolve("training");
         Files.createDirectories(directory);
-        Path file = directory.resolve("windows-" + UUID.randomUUID() + ".jsonl");
+        String basename = "windows-" + UUID.randomUUID();
+        Path file = directory.resolve(basename + ".jsonl");
         BufferedWriter output = Files.newBufferedWriter(file, StandardOpenOption.CREATE_NEW);
+        final BufferedWriter csv;
+        try {
+            csv = plugin.getConfig().getBoolean("training.csv-enabled", true)
+                    ? Files.newBufferedWriter(directory.resolve(basename + ".csv"), StandardOpenOption.CREATE_NEW) : null;
+            if (csv != null) {
+                csv.write(TrainingCsv.header());
+                csv.newLine();
+                csv.flush();
+            }
+        } catch (IOException error) {
+            output.close();
+            throw error;
+        }
         writer = new Thread(() -> {
-            try (output) {
+            try (output; csv) {
                 while (running || !queue.isEmpty()) {
-                    String line = queue.poll(250, java.util.concurrent.TimeUnit.MILLISECONDS);
-                    if (line != null) {
-                        output.write(line);
+                    RecordedWindow window = queue.poll(250, java.util.concurrent.TimeUnit.MILLISECONDS);
+                    if (window != null) {
+                        output.write(window.json());
                         output.newLine();
                         output.flush();
+                        if (csv != null) {
+                            for (int i = 0; i < window.values().length; i++) {
+                                csv.write(TrainingCsv.row(window.label(), window.values()[i], window.player(),
+                                        window.session(), window.id(), i, window.timestamp()));
+                                csv.newLine();
+                            }
+                            csv.flush();
+                        }
                     }
                 }
             } catch (IOException | InterruptedException error) {
@@ -71,15 +97,14 @@ public final class TrainingRecorder implements AutoCloseable {
     public void record(UUID player, String expectedSession, List<TickDataPOJO> frames) {
         Session session = sessions.get(player);
         if (session == null || !session.id().equals(expectedSession) || !healthy || !running) return;
-        // Column order matches the existing FlatBuffers wire format (pitch jerk precedes yaw jerk).
-        float[][] values = frames.stream().map(t -> new float[] {
-                t.deltaYaw, t.deltaPitch, t.accelYaw, t.accelPitch,
-                t.jerkPitch, t.jerkYaw, t.gcdErrorYaw, t.gcdErrorPitch
-        }).toArray(float[][]::new);
-        String line = gson.toJson(Map.of("schema", 1, "player_id", player.toString(),
+        float[][] values = MovementFeatures.expand(frames);
+        UUID windowId = UUID.randomUUID();
+        long timestamp = System.currentTimeMillis();
+        String line = gson.toJson(Map.of("schema", MovementFeatures.SCHEMA, "player_id", player.toString(),
                 "session_id", session.id(), "label", session.label(),
-                "timestamp_ms", System.currentTimeMillis(), "frames", values));
-        if (!queue.offer(line) && dropped.incrementAndGet() % 100 == 1) {
+                "timestamp_ms", timestamp, "window_id", windowId.toString(), "frames", values));
+        if (!queue.offer(new RecordedWindow(line, values, session.label(), player,
+                UUID.fromString(session.id()), windowId, timestamp)) && dropped.incrementAndGet() % 100 == 1) {
             plugin.getLogger().warning("Training queue full; dropped windows: " + dropped.get());
         }
     }

@@ -1,3 +1,7 @@
+training:
+  # Also write label-first CSV beside the JSONL recordings.
+  csv-enabled: true
+
 # =========================================
 #       AnGuard Configuration
 # =========================================
