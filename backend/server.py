@@ -70,9 +70,9 @@ def main():
     parser.add_argument('--port', type=int, default=8000)
     parser.add_argument('--model', type=Path)
     args = parser.parse_args()
-    key = os.environ.get('ANGUARD_API_KEY', '')
+    key = os.environ.get('SILENTAC_API_KEY') or os.environ.get('ANGUARD_API_KEY', '')
     if len(key) < 24:
-        parser.exit(1, 'Set ANGUARD_API_KEY to a random secret of at least 24 characters.\n')
+        parser.exit(1, 'Set SILENTAC_API_KEY to a random secret of at least 24 characters.\n')
     # Plain HTTP is restricted to loopback; remote deployment requires a separate TLS transport change.
     model = Model(args.model) if args.model else None
     server = InferenceServer(('127.0.0.1', args.port), key, model)

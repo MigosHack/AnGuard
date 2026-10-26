@@ -5,7 +5,7 @@ plugins {
     id("com.github.johnrengelman.shadow") version "8.1.1"
 }
 
-group = "xyz.angames.anguardaig"
+group = "xyz.angames.silentac"
 version = "3.0"
 
 java {
@@ -23,9 +23,14 @@ dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
     compileOnly(files("libs/ProtocolLib.jar"))
     implementation("com.google.flatbuffers:flatbuffers-java:23.5.26")
+    testImplementation("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+    testImplementation("org.mockito:mockito-core:5.15.2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks {
+    test { useJUnitPlatform() }
     withType<JavaCompile> {
         options.encoding = "UTF-8"
     }

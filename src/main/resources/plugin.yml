@@ -1,23 +1,31 @@
-name: AnGuard
+name: SilentAC
 version: '3.0'
-main: xyz.angames.anguardai.Anguardai
+main: xyz.angames.anguardai.SilentAC
 api-version: '1.21'
 authors: [ SRS ]
-description: AnGames Anticheat - AnGuard + AI
-website: https://store.angames.xyz
+description: SilentAC - trainable aim detection and recording tools
 depend: [ProtocolLib]
 
 permissions:
-  anguard.admin:
-    description: Grants access to all AnGuard commands.
+  silentac.admin:
+    description: Manage SilentAC recordings and profiles.
     default: op
-  anguard.bypass:
-    description: Bypasses checks
+  silentac.bypass:
+    description: Bypass aim inference (explicit recording still works).
     default: false
+  anguard.admin:
+    description: Legacy alias for silentac.admin.
+    default: false
+    children:
+      silentac.admin: true
+  anguard.bypass:
+    description: Legacy alias for silentac.bypass.
+    default: false
+    children:
+      silentac.bypass: true
 
 commands:
-  anguard:
-    description: Main AnGuard command.
-    permission: anguard.admin
-    aliases: [agac]
-    usage: /<command> [subcommand] [player]
+  silentac:
+    description: SilentAC recording and inspection commands.
+    aliases: [anguard, agac]
+    usage: /<command> recording start|stop <name> [time] [legit|cheat]

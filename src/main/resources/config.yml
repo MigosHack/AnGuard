@@ -3,14 +3,14 @@ training:
   csv-enabled: true
 
 # =========================================
-#       AnGuard Configuration
+#       SilentAC Configuration
 # =========================================
 
 #API Connector
 vds:
   ip: "127.0.0.1"
   port: 8000
-  secret_key: "ANGUARD-Key"
+  secret_key: ""
 
 
 checks:
@@ -20,7 +20,7 @@ checks:
 
 autoban:
   enable: false
-  command: 'kick {player} [AnGuard] Unfair Advantage detected by Neural Network!'
+  command: 'kick {player} [SilentAC] Aim detection'
   # Broadcast message (leave empty '' to disable)
   broadcast-message: ''
 
@@ -62,23 +62,42 @@ ai:
     multiplier: 1.0
 
 
+appearance:
+  version: 1
+
+recording:
+  # Explicitly announce the chosen label on start. Override with [legit|cheat].
+  default-label: legit
+
 messages:
-  prefix: "<#8D98FC>AnGuard <dark_gray><b>></b> "
-  no_permission: "<red>You do not have permission to execute this command."
-  player_only: "<red>This command can only be executed by a player."
-  player_not_found: "<red>Player <yellow>{player} <red>not found or offline."
-  invalid_usage: "<red>Usage: <gray>/anguard <subcommand> [player]"
-  recording_started_legit: "<gray>Started recording <green>LEGIT <gray>data for <white>{player}<gray>."
-  recording_started_cheat: "<gray>Started recording <red>CHEATER <gray>data for <white>{player}<gray>."
-  recording_stopped: "<gray>Stopped recording data for <white>{player}<gray>."
-  tracker_enabled: "<gray>Now tracking <aqua>{player}<gray>. Look at your Action Bar."
-  tracker_disabled: "<gray>Stopped tracking <aqua>{player}<gray>."
-  profile_header: "<dark_gray><st>       </st> <#8D98FC><bold>AnGuard Profile</bold> <dark_gray><st>       </st>"
-  profile_footer: "<dark_gray><st>                                   </st>"
+  prefix: '<gradient:#FFFFFF:#A0A0A0><bold>SilentAC</bold></gradient> <dark_gray>»</dark_gray> '
+  no_permission: '<gray>Недостаточно прав.'
+  player_only: '<gray>Эта команда доступна только игроку.'
+  player_not_found: '<gray>Игрок <gradient:#FFFFFF:#B0B0B0>{player}</gradient> не в сети.'
+  invalid_usage: '<gray>Помощь: <white>/anguard help'
+  recording_usage: '<gray>/anguard recording start <white><name> [time] [legit|cheat]</white> <dark_gray>·</dark_gray> /anguard recording stop <white><name>'
+  invalid_time: '<gray>Время: <white>15</white> минут, <white>15:00</white>, <white>30s</white>, <white>15m</white> или <white>1h</white>. От 1 секунды до 24 часов.'
+  recording_started: '<gray>Запись <gradient:#FFFFFF:#B0B0B0>{player}</gradient> начата <dark_gray>·</dark_gray> <white>{label}</white> <dark_gray>·</dark_gray> <gray>{time}'
+  recording_stopped: '<gray>Запись <gradient:#FFFFFF:#B0B0B0>{player}</gradient> завершена: {reason}. <gray>Удары: <white>{hits}</white> <dark_gray>·</dark_gray> <gray>Записано окон: <white>{windows}'
+  recording_stop_confirmed: '<gray>Запись <gradient:#FFFFFF:#B0B0B0>{player}</gradient> остановлена.'
+  recording_not_active: '<gray>У <white>{player}</white> нет активной записи.'
+  recording_bossbar: '<gradient:#FFFFFF:#AAAAAA>Осталось: {time}</gradient>'
+  recording_actionbar: '<gradient:#FFFFFF:#B0B0B0>{player}</gradient> <dark_gray>│</dark_gray> <gray>Удары: <white>{hits}</white> <dark_gray>│</dark_gray> <gray>Окна: <white>{windows}</white> <dark_gray>│</dark_gray> <gray>Сэмплы: <white>{samples}</white> <dark_gray>│</dark_gray> <white>{label}'
+  tracker_enabled: '<gray>Наблюдение за <gradient:#FFFFFF:#B0B0B0>{player}</gradient> включено.'
+  tracker_disabled: '<gray>Наблюдение за <gradient:#FFFFFF:#B0B0B0>{player}</gradient> отключено.'
+  help_header: '<gradient:#FFFFFF:#A0A0A0><bold>SilentAC · команды</bold></gradient>'
+  help_lines:
+    - '<gradient:#FFFFFF:#B0B0B0>/anguard recording start <name> [time] [legit|cheat]</gradient> <gray>— начать запись'
+    - '<gradient:#FFFFFF:#B0B0B0>/anguard recording stop <name></gradient> <gray>— остановить запись'
+    - '<gradient:#FFFFFF:#B0B0B0>/anguard info <name></gradient> <gray>— наблюдение в actionbar'
+    - '<gradient:#FFFFFF:#B0B0B0>/anguard profile <name></gradient> <gray>— профиль игрока'
+    - '<gray>Пример: <white>/anguard recording start Steve 15:00 legit'
+  profile_header: '<gradient:#FFFFFF:#A0A0A0><bold>SilentAC · профиль</bold></gradient>'
+  profile_footer: '<dark_gray>────────────────────────────'
   profile_lines:
-    - "<gray>Player: <white>{player}"
-    - "<gray>Ping: <white>{ping}ms"
-    - "<gray>Client: <white>{client}"
-    - "<gray>Protocol: <white>{version}"
-    - "<gray>Suspicion: <#8D98FC>{suspicion}%"
-    - "<gray>Buffer: <yellow>{buffer}"
+    - '<gray>Игрок: <gradient:#FFFFFF:#B0B0B0>{player}</gradient>'
+    - '<gray>Пинг: <white>{ping} мс'
+    - '<gray>Клиент: <white>{client}'
+    - '<gray>Протокол: <white>{version}'
+    - '<gray>Оценка модели: <gradient:#FFFFFF:#B0B0B0>{suspicion}%</gradient>'
+    - '<gray>Буфер: <white>{buffer}'

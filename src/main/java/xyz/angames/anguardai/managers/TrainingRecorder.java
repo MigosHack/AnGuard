@@ -1,7 +1,7 @@
 package xyz.angames.anguardai.managers;
 
 import com.google.gson.Gson;
-import xyz.angames.anguardai.Anguardai;
+import xyz.angames.anguardai.SilentAC;
 import xyz.angames.anguardai.data.TickDataPOJO;
 import xyz.angames.anguardai.data.MovementFeatures;
 import xyz.angames.anguardai.data.TrainingCsv;
@@ -20,19 +20,22 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /** Explicit administrator labels only; never label using the model's predictions. */
 public final class TrainingRecorder implements AutoCloseable {
-    private record Session(String id, int label) {}
+    private record Session(String id, int label, AtomicLong hits, AtomicLong written) {
+        Session(String id, int label) { this(id, label, new AtomicLong(), new AtomicLong()); }
+    }
+    public record Statistics(long hits, long windows) {}
     private final Map<UUID, Session> sessions = new ConcurrentHashMap<>();
     private record RecordedWindow(String json, float[][] values, int label, UUID player,
-                                  UUID session, UUID id, long timestamp) {}
+                                  UUID session, UUID id, long timestamp, Session counters) {}
     private final ArrayBlockingQueue<RecordedWindow> queue = new ArrayBlockingQueue<>(1024);
     private final AtomicLong dropped = new AtomicLong();
     private final Thread writer;
-    private final Anguardai plugin;
+    private final SilentAC plugin;
     private final Gson gson = new Gson();
     private volatile boolean running = true;
     private volatile boolean healthy = true;
 
-    public TrainingRecorder(Anguardai plugin) throws IOException {
+    public TrainingRecorder(SilentAC plugin) throws IOException {
         this.plugin = plugin;
         Path directory = plugin.getDataFolder().toPath().resolve("training");
         Files.createDirectories(directory);
@@ -68,13 +71,14 @@ public final class TrainingRecorder implements AutoCloseable {
                             }
                             csv.flush();
                         }
+                        window.counters().written().incrementAndGet();
                     }
                 }
             } catch (IOException | InterruptedException error) {
                 healthy = false;
                 plugin.getLogger().severe("Training recorder stopped: " + error.getMessage());
             }
-        }, "anguard-training-writer");
+        }, "silentac-training-writer");
         writer.setDaemon(true);
         writer.start();
     }
@@ -84,6 +88,16 @@ public final class TrainingRecorder implements AutoCloseable {
         Session session = new Session(UUID.randomUUID().toString(), label);
         sessions.put(player, session);
         return session.id();
+    }
+
+    public Statistics statistics(UUID player) {
+        Session session = sessions.get(player);
+        return session == null ? new Statistics(0, 0) : new Statistics(session.hits().get(), session.written().get());
+    }
+
+    public void hit(UUID player) {
+        Session session = sessions.get(player);
+        if (session != null) session.hits().incrementAndGet();
     }
 
     public void stop(UUID player) { sessions.remove(player); }
@@ -102,9 +116,9 @@ public final class TrainingRecorder implements AutoCloseable {
         long timestamp = System.currentTimeMillis();
         String line = gson.toJson(Map.of("schema", MovementFeatures.SCHEMA, "player_id", player.toString(),
                 "session_id", session.id(), "label", session.label(),
-                "timestamp_ms", timestamp, "window_id", windowId.toString(), "frames", values));
+                "timestamp_ms", timestamp, "window_id", windowId.toString(), "frames", values, "hits", session.hits().get()));
         if (!queue.offer(new RecordedWindow(line, values, session.label(), player,
-                UUID.fromString(session.id()), windowId, timestamp)) && dropped.incrementAndGet() % 100 == 1) {
+                UUID.fromString(session.id()), windowId, timestamp, session)) && dropped.incrementAndGet() % 100 == 1) {
             plugin.getLogger().warning("Training queue full; dropped windows: " + dropped.get());
         }
     }

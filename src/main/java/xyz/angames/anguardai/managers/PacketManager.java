@@ -7,7 +7,7 @@ import com.comphenix.protocol.events.PacketAdapter;
 import com.comphenix.protocol.events.PacketContainer;
 import com.comphenix.protocol.events.PacketEvent;
 import org.bukkit.entity.Player;
-import xyz.angames.anguardai.Anguardai;
+import xyz.angames.anguardai.SilentAC;
 import xyz.angames.anguardai.checks.Check;
 import xyz.angames.anguardai.checks.impl.AimCheck;
 import xyz.angames.anguardai.data.PlayerProfile;
@@ -16,7 +16,7 @@ import java.util.List;
 
 public class PacketManager {
 
-    public PacketManager(Anguardai plugin, PlayerProfileManager profileManager) {
+    public PacketManager(SilentAC plugin, PlayerProfileManager profileManager) {
         ProtocolLibrary.getProtocolManager().addPacketListener(new PacketAdapter(
                 plugin, ListenerPriority.HIGHEST, PacketType.Play.Client.LOOK, PacketType.Play.Client.POSITION_LOOK
         ) {
