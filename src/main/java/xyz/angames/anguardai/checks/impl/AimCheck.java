@@ -12,6 +12,7 @@ import xyz.angames.anguardai.checks.Check;
 import xyz.angames.anguardai.data.PlayerProfile;
 import xyz.angames.anguardai.data.TickDataPOJO;
 import xyz.angames.anguardai.data.MovementFeatures;
+import xyz.angames.anguardai.utils.InferenceDiagnostics;
 import xyz.angames.anguardai.flatbuffers.TickData;
 import xyz.angames.anguardai.flatbuffers.TickDataSequence;
 
@@ -62,6 +63,7 @@ public class AimCheck extends Check {
         if (System.currentTimeMillis() - this.profile.lastTeleportTime < 2000) {
             synchronized (this.profile) {
                 this.profile.movementHistory.clear();
+                this.profile.windowSamples = 0;
                 this.profile.ticksStep = 0;
                 this.profile.aimProcessor.reset();
                 resetProfile(toYaw, toPitch);
@@ -118,16 +120,20 @@ public class AimCheck extends Check {
                 return;
             }
             plugin.getTrainingRecorder().record(player.getUniqueId(), recordingSession, history);
-            if ((player.hasPermission("silentac.bypass") || player.hasPermission("anguard.bypass")) || plugin.getTrainingRecorder().isRecording(player.getUniqueId())) return;
+            if (InferenceDiagnostics.bypassed(player) || plugin.getTrainingRecorder().isRecording(player.getUniqueId())) return;
             if (!profile.predictionPending.compareAndSet(false, true)) return;
             long requestedAt = System.currentTimeMillis();
+            profile.predictionRequests++;
+            profile.inferenceError = false;
             try {
                 byte[] binaryData = serialize(history);
-                plugin.getAiServer().sendRequest(binaryData)
+                plugin.getAiServer().sendRequest(binaryData, code -> profile.lastApiStatus = code)
                         .thenAccept(response -> onResponse(response, generation, requestedAt))
                         .whenComplete((ignored, error) -> profile.predictionPending.set(false));
             } catch (Exception e) {
                 profile.predictionPending.set(false);
+                profile.lastApiStatus = -1;
+                profile.inferenceError = true;
                 plugin.getLogger().warning("Could not submit AI window: " + e.getMessage());
             }
         });
@@ -158,6 +164,10 @@ public class AimCheck extends Check {
                 if (!player.isOnline() || plugin.getPlayerProfileManager().getProfile(player) != profile
                         || profile.recordingGeneration.get() != generation) return;
                 this.profile.suspicion = probability * 100.0;
+                this.profile.predictionThreshold = threshold * 100.0;
+                this.profile.predictionResponses++;
+                this.profile.lastPredictionTime = System.currentTimeMillis();
+                this.profile.inferenceError = false;
                 if (plugin.getConfig().getBoolean("ai.observe-only", true)
                         || plugin.getTrainingRecorder().isRecording(player.getUniqueId())
                         || profile.lastTeleportTime > requestedAt
@@ -168,8 +178,6 @@ public class AimCheck extends Check {
                     profile.buffer = 0;
                     return;
                 }
-                profile.lastPredictionTime = System.currentTimeMillis();
-
                 double cheatProb = threshold;
 
                 if (probability > cheatProb) {
@@ -207,6 +215,7 @@ public class AimCheck extends Check {
                     && profile.recordingGeneration.get() == generation) {
                 profile.buffer = 0;
                 profile.damageMultiplier = 1.0;
+                profile.inferenceError = true;
             }
         });
     }

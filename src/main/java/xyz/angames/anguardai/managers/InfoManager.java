@@ -2,11 +2,13 @@ package xyz.angames.anguardai.managers;
 
 import net.kyori.adventure.text.Component;
 import org.bukkit.entity.Player;
+import org.bukkit.Bukkit;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 import xyz.angames.anguardai.SilentAC;
 import xyz.angames.anguardai.data.PlayerProfile;
 import xyz.angames.anguardai.utils.Theme;
+import xyz.angames.anguardai.utils.InferenceDiagnostics;
 
 import java.util.Locale;
 import java.util.Map;
@@ -47,10 +49,13 @@ public class InfoManager {
                         + "<gray>Пинг: <white>%d</white> <dark_gray>│</dark_gray> "
                         + "<gray>VL: <white>%d</white> <dark_gray>│</dark_gray> "
                         + "<gray>Буфер: <white>%.1f</white> <dark_gray>│</dark_gray> "
-                        + "<gray>Оценка: <gradient:#FFFFFF:#B0B0B0>%.1f%%</gradient> <dark_gray>│</dark_gray> "
-                        + "<gray>Sens: <white>%s</white> <dark_gray>│</dark_gray> <gray>Урон: <white>%.2fx",
+                        + "<gray>Оценка: <gradient:#FFFFFF:#B0B0B0>%s</gradient> <dark_gray>│</dark_gray> "
+                        + "<gray>Sens: <white>%s</white> <dark_gray>│</dark_gray> <gray>Урон: <white>%.2fx</white> <dark_gray>│</dark_gray> <gray>%s",
                         Theme.escape(target.getName()), target.getPing(), profile.violationLevel, profile.buffer,
-                        profile.suspicion, sensitivity, profile.damageMultiplier)));
+                        InferenceDiagnostics.score(profile), sensitivity, profile.damageMultiplier,
+                        Theme.escape(InferenceDiagnostics.status(profile, plugin.getConfig().getBoolean("checks.aim.enabled", true),
+                                plugin.getTrainingRecorder().isRecording(target.getUniqueId()), InferenceDiagnostics.bypassed(target),
+                                target.getPing(), Bukkit.getTPS()[0], System.currentTimeMillis())))));
             }
         }.runTaskTimer(plugin, 0L, 2L);
         tasks.put(viewer, task);

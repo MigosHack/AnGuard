@@ -37,6 +37,10 @@ public class AIServer {
     }
 
     public CompletableFuture<String> sendRequest(byte[] flatBufferData) {
+        return sendRequest(flatBufferData, ignored -> {});
+    }
+
+    public CompletableFuture<String> sendRequest(byte[] flatBufferData, java.util.function.IntConsumer status) {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(apiUrl)
                 .timeout(Duration.ofSeconds(5))
@@ -48,6 +52,7 @@ public class AIServer {
 
         return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
                 .thenApply(response -> {
+                    status.accept(response.statusCode());
                     if (response.statusCode() != 200) {
                         plugin.getLogger().warning("SilentAC API error: " + response.statusCode());
                         if (response.statusCode() == 401) plugin.getLogger().warning("-> Invalid Secret Key!");
@@ -57,6 +62,7 @@ public class AIServer {
                     return response.body();
                 })
                 .exceptionally(e -> {
+                    status.accept(-1);
                     plugin.getLogger().severe("SilentAC API connection failed: " + e.getMessage());
                     if (!e.getMessage().contains("timed out")) {
                         e.printStackTrace();

@@ -20,6 +20,13 @@ public class PlayerProfile {
     public double buffer = 0.0;
     public double damageMultiplier = 1.0;
     public long lastPredictionTime = 0;
+    public volatile int windowSamples = 0;
+    public volatile long movementSamples = 0;
+    public long predictionRequests = 0;
+    public long predictionResponses = 0;
+    public volatile int lastApiStatus = 0;
+    public volatile boolean inferenceError = false;
+    public double predictionThreshold = 0;
     public double suspicion = 0.0;
     public int violationLevel = 0;
     public int ticksStep = 0;
@@ -34,9 +41,11 @@ public class PlayerProfile {
 
     public void addMovementFrame(TickDataPOJO frame) {
         this.movementHistory.addLast(frame);
+        this.movementSamples++;
         if (this.movementHistory.size() > HISTORY_SIZE) {
             this.movementHistory.removeFirst();
         }
+        this.windowSamples = this.movementHistory.size();
     }
 
     public boolean isHistoryFull() {
