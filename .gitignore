@@ -27,3 +27,4 @@ backend/models/
 backend/recordings/
 backend/.venv/
 backend/.venv.backup-*/
+backend/datasets/

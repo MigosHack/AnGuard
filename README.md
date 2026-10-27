@@ -1,6 +1,6 @@
 # SilentAC
 
-Плагин проверки aim для Paper 1.21.4, ProtocolLib и Java 21. Собирает размеченные движения, отправляет окна `40 × 48` признаков локальному или удалённому HTTPS API и поддерживает обучение базовой логистической модели. По умолчанию работает в режиме наблюдения без наказаний.
+Плагин проверки aim для Paper 1.21.4, ProtocolLib и Java 21. Собирает размеченные движения, отправляет окна `40 × 48` признаков локальному или удалённому HTTPS API и поддерживает отдельные train/validation/calibration/test датасеты и сравнение логистической регрессии, Random Forest и Extra Trees. По умолчанию работает в режиме наблюдения без наказаний.
 
 ```text
 /anguard recording start Steve 15:00
@@ -24,6 +24,14 @@ bash gradlew build
 
 ```bash
 bash start-backend.sh
+```
+
+Полный процесс обучения:
+
+```bash
+bash start-backend.sh --prepare-dataset backend/recordings/*.jsonl --output backend/datasets/pvp-v1
+bash start-backend.sh --train --dataset backend/datasets/pvp-v1 --output backend/models/aim-pro-v1.json
+bash start-backend.sh --model backend/models/aim-pro-v1.json
 ```
 
 [Полная инструкция: обновление, разметка, CSV/JSONL, обучение и оценка качества](backend/README.md).

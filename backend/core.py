@@ -133,20 +133,36 @@ class Model:
     def __init__(self, path):
         self.data = json.loads(Path(path).read_text())
         d = self.data
-        if d.get('schema') != SCHEMA or d.get('kind') != 'standardized-logistic-v2':
+        kind = d.get('kind')
+        if d.get('schema') != SCHEMA or kind not in ('standardized-logistic-v2', 'random-forest-v1', 'extra-trees-v1'):
             raise ValueError('Unsupported model schema: retrain old models with the 48-column pipeline')
         if d.get('columns') != list(COLUMNS) or d.get('aggregates') != list(AGGREGATES):
             raise ValueError('Model feature order does not match this backend')
-        self.mean, self.scale, self.weights = [np.asarray(d[k], dtype=float)
-                                               for k in ('mean', 'scale', 'weights')]
-        if any(a.shape != (MODEL_INPUTS,) or not np.isfinite(a).all()
-               for a in (self.mean, self.scale, self.weights)) or (self.scale <= 0).any():
-            raise ValueError('Invalid model parameters')
-        self.bias = float(d['bias'])
+        self.kind = kind
+        if kind == 'standardized-logistic-v2':
+            self.mean, self.scale, self.weights = [np.asarray(d[k], dtype=float) for k in ('mean', 'scale', 'weights')]
+            if any(a.shape != (MODEL_INPUTS,) or not np.isfinite(a).all()
+                   for a in (self.mean, self.scale, self.weights)) or (self.scale <= 0).any():
+                raise ValueError('Invalid model parameters')
+            self.bias = float(d['bias'])
+            if not math.isfinite(self.bias):
+                raise ValueError('Invalid model bias')
+        else:
+            from forest import validate_trees
+            self.trees = validate_trees(d['trees'])
         self.threshold = float(d['threshold'])
-        if not math.isfinite(self.bias) or not 0 <= self.threshold <= 1:
+        if not 0 <= self.threshold <= 1:
             raise ValueError('Invalid model threshold or bias')
 
-    def score(self, frames):
-        z = float(((features(frames) - self.mean) / self.scale) @ self.weights + self.bias)
+    def score_features(self, values):
+        values = np.asarray(values, dtype=float)
+        if values.shape != (MODEL_INPUTS,) or not np.isfinite(values).all():
+            raise ValueError('Invalid model feature vector')
+        if self.kind != 'standardized-logistic-v2':
+            from forest import score_trees
+            return score_trees(self.trees, values)
+        z = float(((values - self.mean) / self.scale) @ self.weights + self.bias)
         return float(1 / (1 + math.exp(-max(-700, min(700, z)))))
+
+    def score(self, frames):
+        return self.score_features(features(frames))

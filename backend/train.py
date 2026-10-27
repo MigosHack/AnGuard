@@ -1,6 +1,5 @@
 """Train a baseline; calibrate and evaluate on separate players when the dataset permits it."""
 import argparse
-import hashlib
 import json
 import math
 from pathlib import Path
@@ -10,42 +9,9 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GroupShuffleSplit
 from sklearn.preprocessing import StandardScaler
 
-from core import SCHEMA, COLUMNS, AGGREGATES, features, validate_frames
-from recordings import records
+from core import SCHEMA, COLUMNS, AGGREGATES
+from dataio import load
 
-
-def load(paths):
-    rows, labels, players, sessions = [], [], [], {}
-    digest = hashlib.sha256()
-    seen = set()
-    for path in paths:
-        for number, r, raw in records(path):
-            try:
-                if r['schema'] not in (1, SCHEMA) or type(r['label']) is not int or r['label'] not in (0, 1):
-                    raise ValueError('Invalid schema or label')
-                player, session = r['player_id'], r['session_id']
-                if not isinstance(player, str) or not player or not isinstance(session, str) or not session:
-                    raise ValueError('Missing player/session')
-                identity = (player, r['label'])
-                if session in sessions and sessions[session] != identity:
-                    raise ValueError('Session has inconsistent player or label')
-                sessions[session] = identity
-                expanded = validate_frames(r['frames'], r['schema'])
-                values = features(expanded)
-                # Duplicated files/windows must not inflate metrics or training weights.
-                fingerprint = hashlib.sha256(player.encode() + expanded[:, :8].astype('<f4').tobytes()).digest()
-                if fingerprint in seen:
-                    raise ValueError('Duplicate player window; remove duplicated inputs')
-                seen.add(fingerprint)
-                rows.append(values)
-                labels.append(r['label'])
-                players.append(player)
-                digest.update(raw)
-            except (ValueError, KeyError, TypeError) as error:
-                raise ValueError(f'{path}:{number}: {error}') from error
-    if not rows:
-        raise ValueError('No recorded windows found')
-    return np.asarray(rows), np.asarray(labels), np.asarray(players), digest.hexdigest()
 
 
 def split_players(x, y, groups, seed):
@@ -141,12 +107,36 @@ def train(paths, output, seed=42, target_fpr=.001):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('data', nargs='+', help='Recorded JSONL or label-first CSV files (use one format per recording)')
+    parser.add_argument('data', nargs='*', help='Recorded JSONL or label-first CSV files (use one format per recording)')
     parser.add_argument('--output', required=True, help='New versioned JSON model file')
+    parser.add_argument('--dataset', help='Frozen four-way dataset directory created by --prepare-dataset')
+    parser.add_argument('--advanced', action='store_true', help='Freeze a four-way dataset beside the model and compare candidates')
+    parser.add_argument('--model-type', choices=['auto', 'logistic', 'random-forest', 'extra-trees'], default='auto')
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--target-fpr', type=float, default=.001)
     args = parser.parse_args()
     try:
-        print(json.dumps(train(args.data, args.output, args.seed, args.target_fpr), indent=2))
-    except (ValueError, OSError) as error:
+        if args.dataset and (args.data or args.advanced):
+            raise ValueError('Use either --dataset or input recordings, not both')
+        if args.dataset or args.advanced:
+            from advanced import train_dataset
+            if args.advanced:
+                if Path(args.output).exists():
+                    raise FileExistsError(f'Model already exists: {args.output}')
+                if not args.data:
+                    raise ValueError('--advanced requires input recordings')
+                from dataset import prepare
+                dataset_dir = str(Path(args.output).with_suffix('.dataset'))
+                prepare(args.data, dataset_dir, args.seed)
+            else:
+                dataset_dir = args.dataset
+            result = train_dataset(dataset_dir, args.output, args.seed, args.target_fpr, args.model_type)
+        else:
+            if not args.data:
+                raise ValueError('Provide recording files or --dataset')
+            if args.model_type not in ('auto', 'logistic'):
+                raise ValueError('Nonlinear model comparison requires --dataset or --advanced')
+            result = train(args.data, args.output, args.seed, args.target_fpr)
+        print(json.dumps(result, indent=2))
+    except (ValueError, OSError, KeyError) as error:
         parser.exit(1, f'Training failed: {error}\n')

@@ -11,6 +11,9 @@ Usage: bash start-backend.sh [--port 8000] [--model path/to/model.json]
        bash start-backend.sh --install-only
        bash start-backend.sh --test
        bash start-backend.sh --train recordings/*.jsonl --output models/aim-v1.json
+       bash start-backend.sh --prepare-dataset recordings/*.jsonl --output backend/datasets/pvp-v1
+       bash start-backend.sh --train --dataset backend/datasets/pvp-v1 --output backend/models/pro-v1.json
+       bash start-backend.sh --train recordings/*.jsonl --advanced --output backend/models/pro-v1.json
 
 Creates backend/.venv, installs pinned dependencies and starts the local API.
 On Debian/Ubuntu, installs Python/venv using apt if missing (root or sudo required).
@@ -120,6 +123,7 @@ case "${1:-}" in
     --test)
         export PYTHONPATH="$BACKEND_DIR${PYTHONPATH:+:$PYTHONPATH}"
         exec "$PYTHON" -m unittest discover -s "$BACKEND_DIR/tests" -v ;;
+    --prepare-dataset) shift; exec "$PYTHON" "$BACKEND_DIR/dataset.py" "$@" ;;
     --train) shift; exec "$PYTHON" "$BACKEND_DIR/train.py" "$@" ;;
 esac
 exec "$PYTHON" "$BACKEND_DIR/local.py" "$@"
