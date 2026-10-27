@@ -8,6 +8,8 @@ training:
 
 #API Connector
 vds:
+  # For an API on another machine: https://ac.example.com (takes precedence over ip/port).
+  url: ""
   ip: "127.0.0.1"
   port: 8000
   secret_key: ""

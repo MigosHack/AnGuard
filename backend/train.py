@@ -1,4 +1,4 @@
-"""Train a baseline, calibrate on separate players, evaluate once on held-out players."""
+"""Train a baseline; calibrate and evaluate on separate players when the dataset permits it."""
 import argparse
 import hashlib
 import json
@@ -43,8 +43,8 @@ def load(paths):
                 digest.update(raw)
             except (ValueError, KeyError, TypeError) as error:
                 raise ValueError(f'{path}:{number}: {error}') from error
-    if len(set(players)) < 15:
-        raise ValueError('Need at least 15 independent players, with legit and cheat sessions across splits')
+    if not rows:
+        raise ValueError('No recorded windows found')
     return np.asarray(rows), np.asarray(labels), np.asarray(players), digest.hexdigest()
 
 
@@ -91,7 +91,17 @@ def train(paths, output, seed=42, target_fpr=.001):
     if not 0 <= target_fpr < 1:
         raise ValueError('target-fpr must be in [0, 1)')
     x, y, groups, digest = load(paths)
-    fitting, calibration, test = split_players(x, y, groups, seed)
+    if set(y) != {0, 1}:
+        raise ValueError('Training requires both legit (0) and cheat (1) recordings')
+    split_warning = None
+    try:
+        fitting, calibration, test = split_players(x, y, groups, seed)
+    except ValueError as error:
+        # Small/unsplittable datasets are useful for checking the pipeline, not independent evaluation.
+        fitting = np.arange(len(y))
+        calibration = test = np.array([], dtype=int)
+        split_warning = str(error)
+    independent = bool(len(calibration) and len(test))
     scaler = StandardScaler().fit(x[fitting])
     # Each player's recordings have equal total training weight.
     _, inverse, counts = np.unique(groups[fitting], return_inverse=True, return_counts=True)
@@ -100,14 +110,23 @@ def train(paths, output, seed=42, target_fpr=.001):
     model = LogisticRegression(max_iter=2000, class_weight='balanced', random_state=seed)
     model.fit(scaler.transform(x[fitting]), y[fitting], sample_weight=weights)
     scores = model.predict_proba(scaler.transform(x))[:, 1]
-    threshold = calibrate(scores[calibration], y[calibration], groups[calibration], target_fpr)
-    report = {'seed': seed, 'dataset_sha256': digest, 'target_calibration_player_fpr': target_fpr,
+    threshold_data = calibration if independent else fitting
+    threshold = calibrate(scores[threshold_data], y[threshold_data], groups[threshold_data], target_fpr)
+    training_metrics = metrics(scores[fitting], y[fitting], groups[fitting], threshold)
+    training_metrics['zero_fp_one_sided_95pct_upper_bound'] = None
+    report = {'validation_mode': 'player_holdout' if independent else 'training_only',
+              'validation_unavailable_reason': split_warning,
+              'threshold_source': 'calibration_players' if independent else 'training_players',
+              'seed': seed, 'dataset_sha256': digest, 'target_calibration_player_fpr': target_fpr if independent else None,
+              'target_training_player_fpr': None if independent else target_fpr,
               'threshold': threshold, 'splits': {name: sorted(set(groups[idx])) for name, idx in
                   [('train', fitting), ('calibration', calibration), ('test', test)]},
-              'calibration': metrics(scores[calibration], y[calibration], groups[calibration], threshold),
-              'test': metrics(scores[test], y[test], groups[test], threshold),
+              'training': training_metrics,
+              'calibration': metrics(scores[calibration], y[calibration], groups[calibration], threshold) if independent else None,
+              'test': metrics(scores[test], y[test], groups[test], threshold) if independent else None,
               'warning': 'Baseline score is not a calibrated probability. Synthetic tests do not establish game accuracy. '
-                         'Zero observed false alarms does not prove zero risk. Keep observation mode enabled.'}
+                         'Zero observed false alarms does not prove zero risk. Training-only scores are not independent evaluation. '
+                         'Keep observation mode enabled.'}
     artifact = {'schema': SCHEMA, 'kind': 'standardized-logistic-v2', 'columns': list(COLUMNS), 'aggregates': list(AGGREGATES), 'mean': scaler.mean_.tolist(),
                 'scale': scaler.scale_.tolist(), 'weights': model.coef_[0].tolist(),
                 'bias': float(model.intercept_[0]), 'threshold': threshold,

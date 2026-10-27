@@ -196,9 +196,48 @@ class PipelineTests(unittest.TestCase):
         source = self.root / 'legit-only.jsonl'
         source.write_text(''.join(raw for raw in self.data.read_text().splitlines(keepends=True)
                                   if json.loads(raw)['label'] == 0))
-        with self.assertRaisesRegex(ValueError, 'lacks a class'):
+        with self.assertRaisesRegex(ValueError, 'both legit'):
             train([source], self.root / 'must-not-exist.json')
         self.assertFalse((self.root / 'must-not-exist.json').exists())
+
+    def limited_players(self, count, name):
+        path = self.root / name
+        path.write_text(''.join(raw for raw in self.data.read_text().splitlines(keepends=True)
+                                if int(json.loads(raw)['player_id']) < count))
+        return path
+
+    def test_one_and_two_players_can_train_without_claiming_independent_validation(self):
+        for count in (1, 2):
+            source = self.limited_players(count, f'small-{count}.jsonl')
+            output = self.root / f'small-{count}.json'
+            result = train([source], output)
+            self.assertTrue(output.exists())
+            self.assertEqual(result['validation_mode'], 'training_only')
+            self.assertEqual(len(result['splits']['train']), count)
+            self.assertEqual(result['splits']['test'], [])
+            self.assertEqual(result['splits']['calibration'], [])
+            self.assertIsNone(result['test'])
+            self.assertIsNone(result['calibration'])
+            self.assertEqual(result['threshold_source'], 'training_players')
+            self.assertIsNotNone(result['validation_unavailable_reason'])
+            self.assertLess(Model(output).score(np.zeros((40, 8))), Model(output).score(np.full((40, 8), 3)))
+
+    def test_three_players_with_both_classes_still_get_disjoint_holdouts(self):
+        source = self.limited_players(3, 'three-players.jsonl')
+        result = train([source], self.root / 'three-players.json')
+        self.assertEqual(result['validation_mode'], 'player_holdout')
+        self.assertIsNotNone(result['test'])
+        self.assertIsNotNone(result['calibration'])
+        splits = [set(v) for v in result['splits'].values()]
+        self.assertEqual(len(set.union(*splits)), 3)
+        self.assertTrue(all(len(part) == 1 for part in splits))
+        self.assertTrue(all(not splits[i] & splits[j] for i in range(3) for j in range(i)))
+
+    def test_empty_dataset_fails_clearly(self):
+        source = self.root / 'empty.jsonl'
+        source.write_text('')
+        with self.assertRaisesRegex(ValueError, 'No recorded windows'):
+            train([source], self.root / 'empty-model.json')
 
     def test_training_refuses_overwrite(self):
         with self.assertRaises(FileExistsError):
