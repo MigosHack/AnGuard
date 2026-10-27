@@ -12,7 +12,7 @@ public class AIServer {
 
     private final SilentAC plugin;
     private final HttpClient client;
-    private final String apiUrl;
+    private final URI apiUrl;
     private final String secretKey;
     private final String serverPort;
 
@@ -28,7 +28,7 @@ public class AIServer {
         String environmentKey = System.getenv("SILENTAC_API_KEY");
         if (environmentKey == null) environmentKey = System.getenv("ANGUARD_API_KEY");
         this.secretKey = environmentKey != null ? environmentKey : plugin.getConfig().getString("vds.secret_key", "");
-        this.apiUrl = "http://" + ip + ":" + port + "/predict_binary";
+        this.apiUrl = ApiEndpoint.resolve(plugin.getConfig().getString("vds.url", ""), ip, port);
 
         int mcPort = plugin.getServer().getPort();
         this.serverPort = String.valueOf(mcPort);
@@ -38,7 +38,7 @@ public class AIServer {
 
     public CompletableFuture<String> sendRequest(byte[] flatBufferData) {
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(apiUrl))
+                .uri(apiUrl)
                 .timeout(Duration.ofSeconds(5))
                 .header("Content-Type", "application/octet-stream")
                 .header("X-Secret-Key", secretKey)
@@ -51,7 +51,7 @@ public class AIServer {
                     if (response.statusCode() != 200) {
                         plugin.getLogger().warning("SilentAC API error: " + response.statusCode());
                         if (response.statusCode() == 401) plugin.getLogger().warning("-> Invalid Secret Key!");
-                        if (response.statusCode() == 403) plugin.getLogger().warning("-> License Limit Reached!");
+                        if (response.statusCode() == 403) plugin.getLogger().warning("-> API request forbidden. Check reverse proxy access rules.");
                         return null;
                     }
                     return response.body();

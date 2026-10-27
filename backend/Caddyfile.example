@@ -1,0 +1,5 @@
+# Replace ac.example.com with a hostname whose DNS points to your VDS.
+# Inbound ports 80 and 443 must reach Caddy. Keep Python API on loopback port 8000.
+ac.example.com {
+    reverse_proxy 127.0.0.1:8000
+}
