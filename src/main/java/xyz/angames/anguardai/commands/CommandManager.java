@@ -11,6 +11,7 @@ import xyz.angames.anguardai.managers.InfoManager;
 import xyz.angames.anguardai.managers.PlayerProfileManager;
 import xyz.angames.anguardai.utils.RecordingDuration;
 import xyz.angames.anguardai.utils.Theme;
+import xyz.angames.anguardai.utils.InferenceDiagnostics;
 
 import java.util.List;
 import java.util.Locale;
@@ -44,6 +45,9 @@ public class CommandManager implements TabExecutor {
             case "info":
                 if (!(sender instanceof Player player)) return message(sender, "player_only");
                 infoManager.toggleInfoDisplay(player, target);
+                return true;
+            case "status":
+                displayStatus(sender, target);
                 return true;
             case "profile":
                 displayProfile(sender, target);
@@ -104,10 +108,33 @@ public class CommandManager implements TabExecutor {
                     .replace("{ping}", Integer.toString(target.getPing()))
                     .replace("{client}", Theme.escape(target.getClientBrandName() == null ? "Unknown" : target.getClientBrandName()))
                     .replace("{version}", Integer.toString(target.getProtocolVersion()))
-                    .replace("{suspicion}", String.format(Locale.ROOT, "%.2f", profile.suspicion))
+                    .replace("{suspicion}%", InferenceDiagnostics.score(profile))
+                    .replace("{suspicion}", InferenceDiagnostics.score(profile).replace("%", ""))
                     .replace("{buffer}", String.format(Locale.ROOT, "%.2f", profile.buffer))));
         }
         message(sender, "profile_footer");
+    }
+
+    private void displayStatus(CommandSender sender, Player target) {
+        PlayerProfile profile = profileManager.getProfile(target);
+        if (profile == null) {
+            message(sender, "status_no_profile", "player", target.getName());
+            return;
+        }
+        boolean recording = plugin.getTrainingRecorder().isRecording(target.getUniqueId());
+        boolean bypass = InferenceDiagnostics.bypassed(target);
+        String state = InferenceDiagnostics.status(profile, plugin.getConfig().getBoolean("checks.aim.enabled", true),
+                recording, bypass, target.getPing(), Bukkit.getTPS()[0], System.currentTimeMillis());
+        message(sender, "status_header", "player", target.getName());
+        message(sender, "status_state", "state", state);
+        message(sender, "status_samples", "frames", Integer.toString(profile.windowSamples), "samples", Long.toString(profile.movementSamples));
+        message(sender, "status_requests", "requests", Long.toString(profile.predictionRequests), "responses", Long.toString(profile.predictionResponses),
+                "http", profile.lastApiStatus == 0 ? "не было" : profile.lastApiStatus < 0 ? "ошибка соединения" : Integer.toString(profile.lastApiStatus));
+        message(sender, "status_flags", "recording", recording ? "да" : "нет", "bypass", bypass ? "да" : "нет",
+                "observe", plugin.getConfig().getBoolean("ai.observe-only", true) ? "да" : "нет");
+        message(sender, "status_score", "score", InferenceDiagnostics.score(profile),
+                "threshold", profile.predictionResponses == 0 ? "—" : String.format(Locale.ROOT, "%.3f%%", profile.predictionThreshold),
+                "age", profile.predictionResponses == 0 ? "нет ответа" : Math.max(0, (System.currentTimeMillis() - profile.lastPredictionTime) / 1000) + " с назад");
     }
 
     private boolean help(CommandSender sender) {
@@ -120,7 +147,7 @@ public class CommandManager implements TabExecutor {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (!allowed(sender) || args.length == 0) return List.of();
         List<String> choices = List.of();
-        if (args.length == 1) choices = List.of("recording", "info", "profile", "help");
+        if (args.length == 1) choices = List.of("recording", "info", "profile", "status", "help");
         else if (args[0].equalsIgnoreCase("recording")) {
             if (args.length == 2) choices = List.of("start", "stop");
             else if (args.length == 3) choices = Bukkit.getOnlinePlayers().stream().map(Player::getName).toList();

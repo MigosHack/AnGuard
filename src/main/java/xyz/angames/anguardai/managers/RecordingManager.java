@@ -137,6 +137,7 @@ public final class RecordingManager implements Listener {
         synchronized (profile) {
             profile.recordingGeneration.incrementAndGet();
             profile.movementHistory.clear();
+            profile.windowSamples = 0;
             profile.ticksStep = 0;
             profile.buffer = 0;
             profile.damageMultiplier = 1.0;
